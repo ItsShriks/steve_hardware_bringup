@@ -17,6 +17,8 @@ def generate_launch_description():
     # Launch configurations
     robot_namespace = LaunchConfiguration('namespace', default='')
     enable_camera = LaunchConfiguration('enable_camera', default='true')
+    camera_serial_no = LaunchConfiguration('camera_serial_no', default="''")
+    usb_port_id = LaunchConfiguration('usb_port_id', default="''")
 
     # Declare launch arguments
     declare_namespace_cmd = DeclareLaunchArgument(
@@ -29,6 +31,18 @@ def generate_launch_description():
         'enable_camera',
         default_value='true',
         description='Enable RealSense L515 camera'
+    )
+
+    declare_serial_no_cmd = DeclareLaunchArgument(
+        'camera_serial_no',
+        default_value="''",
+        description='Serial number of the RealSense camera (leave empty to auto-detect)'
+    )
+
+    declare_usb_port_cmd = DeclareLaunchArgument(
+        'usb_port_id',
+        default_value="''",
+        description='USB port ID of the RealSense camera (leave empty to auto-detect)'
     )
 
     # Pan-tilt controller
@@ -53,11 +67,17 @@ def generate_launch_description():
         ),
         launch_arguments={
             'camera_name': 'pan_tilt_camera',
+            'serial_no': camera_serial_no,
+            'usb_port_id': usb_port_id,
             'device_type': 'l515',
+            'initial_reset': 'true',
+            'wait_for_device_timeout': '10.0',
+            'reconnect_timeout': '6.0',
             'enable_color': 'true',
             'enable_depth': 'true',
             'align_depth.enable': 'true',
-            'pointcloud.enable': 'true'
+            'pointcloud.enable': 'true',
+            'publish_tf': 'true'
         }.items(),
         condition=IfCondition(enable_camera)
     )
@@ -65,6 +85,8 @@ def generate_launch_description():
     ld = LaunchDescription()
     ld.add_action(declare_namespace_cmd)
     ld.add_action(declare_camera_cmd)
+    ld.add_action(declare_serial_no_cmd)
+    ld.add_action(declare_usb_port_cmd)
     ld.add_action(pan_tilt_controller)
     ld.add_action(realsense_camera)
 
