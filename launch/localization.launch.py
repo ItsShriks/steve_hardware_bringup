@@ -2,13 +2,16 @@
 """
 Localization and Navigation Launch File for Steve Robot
 Supports both real hardware and simulation modes
+
+NOTE: For hardware mode, assumes hardware_bringup.launch.py is already running
+      (e.g., as a background cron job on robot startup)
 """
 
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription, LaunchContext
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
-from launch.conditions import IfCondition, UnlessCondition
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
@@ -58,24 +61,6 @@ def launch_setup(context: LaunchContext, use_sim_time_arg, world_arg, map_arg):
         condition=IfCondition(use_sim_time_arg)
     )
 
-    # Hardware mode: Launch real robot hardware
-    hardware_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(
-                get_package_share_directory('steve_hardware_bringup'),
-                'launch',
-                'hardware_bringup.launch.py'
-            )
-        ),
-        launch_arguments={
-            'robot_namespace': '',
-            'arm_type': 'ur5e',
-            'enable_camera': 'true',
-            'enable_pan_tilt': 'true'
-        }.items(),
-        condition=UnlessCondition(use_sim_time_arg)
-    )
-
     # Localization (AMCL + Map Server) - always launched
     localization_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -96,7 +81,7 @@ def launch_setup(context: LaunchContext, use_sim_time_arg, world_arg, map_arg):
         }.items()
     )
 
-    # Navigation (Nav2) - always launched
+    # Navigation (Nav2) - always launched with RViz
     navigation_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
@@ -117,7 +102,6 @@ def launch_setup(context: LaunchContext, use_sim_time_arg, world_arg, map_arg):
     )
 
     launch_actions.append(simulation_launch)
-    launch_actions.append(hardware_launch)
     launch_actions.append(localization_launch)
     launch_actions.append(navigation_launch)
     

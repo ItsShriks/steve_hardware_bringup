@@ -2,15 +2,19 @@
 """
 SLAM Launch File for Steve Robot
 Supports both real hardware and simulation modes
+
+NOTE: For hardware mode, assumes hardware_bringup.launch.py is already running
+      (e.g., as a background cron job on robot startup)
 """
 
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition, UnlessCondition
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 
 
 def generate_launch_description():
@@ -58,27 +62,9 @@ def generate_launch_description():
             'use_sim_time': 'true',
             'arm_type': 'ur5e',
             'include_pan_tilt': 'true',
-            'use_rviz': 'false'  # Disable simulation RViz
+            'use_rviz': 'false'  # We'll launch our own RViz for SLAM
         }.items(),
         condition=IfCondition(use_sim_time)
-    )
-
-    # Hardware mode: Launch real robot hardware
-    hardware_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(
-                get_package_share_directory('steve_hardware_bringup'),
-                'launch',
-                'hardware_bringup.launch.py'
-            )
-        ),
-        launch_arguments={
-            'robot_namespace': '',
-            'arm_type': 'ur5e',
-            'enable_camera': 'true',
-            'enable_pan_tilt': 'true'
-        }.items(),
-        condition=UnlessCondition(use_sim_time)
     )
 
     # SLAM toolbox (always launched)
@@ -96,12 +82,28 @@ def generate_launch_description():
         }.items()
     )
 
+    # RViz for SLAM visualization (always launched)
+    rviz_config = os.path.join(
+        get_package_share_directory('neo_simulation2'),
+        'rviz',
+        'rviz_slam.rviz'
+    )
+    
+    rviz_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2_slam',
+        output='screen',
+        arguments=['-d', rviz_config],
+        parameters=[{'use_sim_time': use_sim_time}]
+    )
+
     ld = LaunchDescription()
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(declare_world_cmd)
     ld.add_action(declare_params_file_cmd)
     ld.add_action(simulation_launch)
-    ld.add_action(hardware_launch)
     ld.add_action(mapping_launch)
+    ld.add_action(rviz_node)
 
     return ld
