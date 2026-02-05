@@ -127,10 +127,14 @@ def generate_launch_description():
 
     declare_map_cmd = DeclareLaunchArgument(
         'map',
-        default_value='',
+        default_value=os.path.join(
+            get_package_share_directory('neo_simulation2'),
+            'maps',
+            'hrsl.yaml'
+        ),
         description='Full path to map yaml file to load. '
                     'If empty and use_sim_time:=true, will auto-detect based on world name. '
-                    'For hardware mode, you must provide the map path.'
+                    'For hardware mode, defaults to hrsl.yaml.'
     )
 
     use_sim_time_arg = LaunchConfiguration('use_sim_time')

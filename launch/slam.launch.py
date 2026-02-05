@@ -83,6 +83,8 @@ def generate_launch_description():
     )
 
     # RViz for SLAM visualization (always launched)
+    # Note: rviz_slam.rviz includes AMCL Particles display which will show covariance warnings
+    # These warnings are harmless during SLAM. Disable "AMCL Particles" in RViz to remove them.
     rviz_config = os.path.join(
         get_package_share_directory('neo_simulation2'),
         'rviz',
