@@ -11,6 +11,8 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+import math
 
 
 def generate_launch_description():
@@ -93,6 +95,34 @@ def generate_launch_description():
         condition=IfCondition(enable_camera)
     )
 
+    # Static transform to correct camera optical frame orientation
+    # Camera is mounted -90° to the left, so we rotate +90° around Z to compensate
+    camera_optical_correction_color = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='camera_optical_correction_color',
+        arguments=[
+            '0', '0', '0',  # No translation
+            str(math.pi/2), '0', '0',  # +90° rotation around Z axis (yaw)
+            'pan_tilt_camera_color_optical_frame',  # Parent (original frame from camera)
+            'pan_tilt_camera_color_optical_frame_corrected'  # Child (corrected frame)
+        ],
+        condition=IfCondition(enable_camera)
+    )
+
+    camera_optical_correction_depth = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='camera_optical_correction_depth',
+        arguments=[
+            '0', '0', '0',  # No translation
+            str(math.pi/2), '0', '0',  # +90° rotation around Z axis (yaw)
+            'pan_tilt_camera_depth_optical_frame',  # Parent (original frame from camera)
+            'pan_tilt_camera_depth_optical_frame_corrected'  # Child (corrected frame)
+        ],
+        condition=IfCondition(enable_camera)
+    )
+
     ld = LaunchDescription()
     ld.add_action(declare_namespace_cmd)
     ld.add_action(declare_camera_cmd)
@@ -100,5 +130,7 @@ def generate_launch_description():
     ld.add_action(declare_usb_port_cmd)
     ld.add_action(pan_tilt_controller)
     ld.add_action(realsense_camera)
+    ld.add_action(camera_optical_correction_color)
+    ld.add_action(camera_optical_correction_depth)
 
     return ld
