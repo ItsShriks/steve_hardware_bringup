@@ -73,11 +73,22 @@ def generate_launch_description():
             'initial_reset': 'true',
             'wait_for_device_timeout': '10.0',
             'reconnect_timeout': '6.0',
+            # Color stream configuration
             'enable_color': 'true',
+            'rgb_camera.color_profile': '640x480x30',
+            # Depth stream configuration
             'enable_depth': 'true',
+            'depth_module.depth_profile': '640x480x30',
+            # Disable infrared streams (not needed for L515)
+            'enable_infra1': 'false',
+            'enable_infra2': 'false',
+            # Alignment and point cloud
             'align_depth.enable': 'true',
             'pointcloud.enable': 'true',
-            'publish_tf': 'true'
+            'enable_sync': 'true',
+            # TF and diagnostics
+            'publish_tf': 'true',
+            'diagnostics_period': '1.0'
         }.items(),
         condition=IfCondition(enable_camera)
     )
