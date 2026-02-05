@@ -4,7 +4,7 @@
   <name>steve_hardware_bringup</name>
   <version>1.0.0</version>
   <description>Hardware bringup package for Steve robot - initializes all real robot components</description>
-  <maintainer email="your_email@example.com">Your Name</maintainer>
+  <maintainer email="nakhyeshrikar@icloud.com">ItsShriks</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
