@@ -47,7 +47,8 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'dev': '/dev/input/js0'},
-            {'deadzone': 0.12}
+            {'deadzone': 0.20},  # Increased to ignore stale axis values
+            {'autorepeat_rate': 20.0}  # Consistent message publishing
         ]
     )
 
