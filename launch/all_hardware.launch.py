@@ -1,10 +1,12 @@
 import os
+
+import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
-import xacro
+
 
 def generate_launch_description():
     """
@@ -19,38 +21,35 @@ def generate_launch_description():
     6. RealSense camera
     """
 
-    hardware_pkg = get_package_share_directory('steve_hardware_bringup')
+    hardware_pkg = get_package_share_directory("steve_hardware_bringup")
 
     # --- 1. ROBOT STATE PUBLISHER ---
-    # Process the URDF with xacro (use main URDF from neo_simulation2 directly)
-    neo_sim_pkg = get_package_share_directory('neo_simulation2')
-    urdf_file = os.path.join(neo_sim_pkg, 'robots', 'mmo_700', 'mmo_700.urdf.xacro')
+    # Process the URDF with xacro (use main URDF from steve_simulation directly)
+    neo_sim_pkg = get_package_share_directory("steve_simulation")
+    urdf_file = os.path.join(neo_sim_pkg, "robots", "mmo_700", "mmo_700.urdf.xacro")
     robot_description = xacro.process_file(
         urdf_file,
         mappings={
-            'use_gazebo': 'false',
-            'arm_type': 'ur5e',
-            'include_wrist_camera': 'true',
-            'include_depth_camera': 'false',
-            'include_pan_tilt': 'true'
-        }
+            "use_gazebo": "false",
+            "arm_type": "ur5e",
+            "include_wrist_camera": "true",
+            "include_depth_camera": "false",
+            "include_pan_tilt": "true",
+        },
     ).toxml()
 
     robot_state_publisher = Node(
-        package='robot_state_publisher',
-        executable='robot_state_publisher',
-        name='robot_state_publisher',
-        output='screen',
-        parameters=[{
-            'use_sim_time': False,
-            'robot_description': robot_description
-        }]
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher",
+        output="screen",
+        parameters=[{"use_sim_time": False, "robot_description": robot_description}],
     )
 
     # --- 2. LIDAR SENSORS ---
     lidar_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(hardware_pkg, 'launch', 'lidar_bringup.launch.py')
+            os.path.join(hardware_pkg, "launch", "lidar_bringup.launch.py")
         )
     )
 
@@ -61,16 +60,16 @@ def generate_launch_description():
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
-                    os.path.join(hardware_pkg, 'launch', 'ur5e_bringup.launch.py')
+                    os.path.join(hardware_pkg, "launch", "ur5e_bringup.launch.py")
                 )
             )
-        ]
+        ],
     )
 
     # --- 4. BASE DRIVER ---
     base_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(hardware_pkg, 'launch', 'base_bringup.launch.py')
+            os.path.join(hardware_pkg, "launch", "base_bringup.launch.py")
         )
     )
 
@@ -90,25 +89,30 @@ def generate_launch_description():
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
-                    os.path.join(get_package_share_directory('realsense2_camera'),
-                                 'launch', 'rs_launch.py')
+                    os.path.join(
+                        get_package_share_directory("realsense2_camera"),
+                        "launch",
+                        "rs_launch.py",
+                    )
                 ),
                 launch_arguments={
-                    'enable_pointcloud': 'true',
-                    'align_depth.enable': 'true',
-                    'initial_reset': 'false',
-                    'enable_sync': 'true',
-                    'reconnect_timeout': '6.0'
-                }.items()
+                    "enable_pointcloud": "true",
+                    "align_depth.enable": "true",
+                    "initial_reset": "false",
+                    "enable_sync": "true",
+                    "reconnect_timeout": "6.0",
+                }.items(),
             )
-        ]
+        ],
     )
 
-    return LaunchDescription([
-        robot_state_publisher,
-        base_launch,
-        lidar_launch,
-        ur5e_launch,
-        # pan_tilt_launch,  # Uncomment after conversion
-        realsense_launch
-    ])
+    return LaunchDescription(
+        [
+            robot_state_publisher,
+            base_launch,
+            lidar_launch,
+            ur5e_launch,
+            # pan_tilt_launch,  # Uncomment after conversion
+            realsense_launch,
+        ]
+    )
