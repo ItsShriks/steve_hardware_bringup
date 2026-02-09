@@ -31,8 +31,10 @@ def execution_stage(
 ):
 
     arm_typ = str(arm_type.perform(context))
-    enable_cam = str(enable_camera.perform(context))
-    enable_pt = str(enable_pan_tilt.perform(context))
+    
+    # Normalize booleans to lowercase string for xacro
+    enable_cam = str(enable_camera.perform(context)).lower()
+    enable_pt = str(enable_pan_tilt.perform(context)).lower()
 
     rp_ns = ""
     if robot_namespace.perform(context) != "/":
