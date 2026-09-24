@@ -63,6 +63,9 @@ def execution_stage(
             "include_wrist_camera": enable_cam,
             "include_depth_camera": "false",
             "include_pan_tilt": enable_pt,
+            # robotiq_2f_85 adds the gripper links/TF (no gripper ros2_control here)
+            "arm_tool": LaunchConfiguration("arm_tool").perform(context),
+            "gripper_hw": "none",
         },
     ).toxml()
 
@@ -222,7 +225,14 @@ def generate_launch_description():
     # Opaque function for configuring all hardware
     opq_function = OpaqueFunction(function=execution_stage, args=context_arguments)
 
+    declare_arm_tool_cmd = DeclareLaunchArgument(
+        "arm_tool",
+        default_value="none",
+        description="End effector in the robot description: none or robotiq_2f_85",
+    )
+
     ld = LaunchDescription()
+    ld.add_action(declare_arm_tool_cmd)
     ld.add_action(declare_namespace_cmd)
     ld.add_action(declare_arm_cmd)
     ld.add_action(declare_robot_ip_cmd)
