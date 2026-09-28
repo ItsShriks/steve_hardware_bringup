@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """
-Wrist RealSense D405 (colour + aligned depth) for Steve.
+Wrist RealSense camera (colour + aligned depth) for Steve: D415 (default) or D405.
 
-The camera is bound by its serial number from robot_config.yaml (cameras.wrist_d405_serial),
-so it does not matter which USB port it is on or whether the pan-tilt L515 enumerates first.
+Model and serial come from robot_config.yaml (cameras.wrist_camera_model, wrist_camera_serial;
+the old key wrist_d405_serial is still read). Binding by serial means
+it does not matter which USB port it is on or whether the pan-tilt L515 enumerates first.
 The camera frames come from the URDF (wrist_camera_* links), so the driver publishes no TF.
 
     ros2 launch steve_hardware_bringup wrist_camera.launch.py
-    ros2 launch steve_hardware_bringup wrist_camera.launch.py serial_no:=_123456789012
+    ros2 launch steve_hardware_bringup wrist_camera.launch.py wrist_serial_no:=_123456789012
+    ros2 launch steve_hardware_bringup wrist_camera.launch.py wrist_profile:=640x480x30   # USB 3 only
+
+D415: depth from ~0.3 m (D405: 7 cm). On USB 2 only reduced modes run, hence 15 fps by default.
 """
 
 import os
@@ -15,6 +19,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+# Argument names carry a wrist_ prefix: launch configurations are global across included files,
+# so plain serial_no / device_type would be taken from the pan-tilt camera (l515).
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
@@ -38,11 +44,26 @@ def rs_serial(serial):
     return f"_{serial}" if str(serial or "").strip() else "''"
 
 
+CAMS = ROBOT_CFG["cameras"]
+WRIST_MODEL = str(CAMS.get("wrist_camera_model") or "d405").lower()
+WRIST_SERIAL = CAMS.get("wrist_camera_serial") or CAMS.get("wrist_d405_serial")
+# colour + depth profile that also runs on USB 2 (D415 on USB 2: max 15 fps at 640x480)
+DEFAULT_PROFILE = {"d415": "640x480x15", "d435": "640x480x15"}.get(WRIST_MODEL, "640x480x30")
+
+
 def generate_launch_description():
-    serial = LaunchConfiguration("serial_no")
+    serial = LaunchConfiguration("wrist_serial_no")
+    profile = LaunchConfiguration("wrist_profile")
     return LaunchDescription([
-        DeclareLaunchArgument("serial_no", default_value=rs_serial(ROBOT_CFG["cameras"].get("wrist_d405_serial")),
-                              description="D405 serial as _<digits> (default: robot_config.yaml)"),
+        DeclareLaunchArgument("wrist_serial_no", default_value=rs_serial(WRIST_SERIAL),
+                              description="wrist camera serial as _<digits> (default: robot_config.yaml)"),
+        DeclareLaunchArgument("wrist_device_type", default_value=WRIST_MODEL,
+                              description="RealSense model (default: robot_config.yaml wrist_camera_model)"),
+        DeclareLaunchArgument("wrist_initial_reset", default_value="false",
+                              description="hardware-reset the camera at start (true only if it "
+                                          "comes up in a bad state; can hang on USB 2)"),
+        DeclareLaunchArgument("wrist_profile", default_value=DEFAULT_PROFILE,
+                              description="colour and depth profile WxHxFPS"),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(
                 get_package_share_directory("realsense2_camera"), "launch", "rs_launch.py")),
@@ -51,14 +72,16 @@ def generate_launch_description():
                 "camera_namespace": "wrist_camera",
                 "camera_name": "wrist_camera",
                 "serial_no": serial,
-                "device_type": "d405",
+                "device_type": LaunchConfiguration("wrist_device_type"),
                 "publish_tf": "false",
                 "enable_color": "true",
                 "enable_depth": "true",
                 "align_depth.enable": "true",
-                "rgb_camera.color_profile": "640x480x30",
-                "depth_module.depth_profile": "640x480x30",
-                "initial_reset": "true",
+                "rgb_camera.color_profile": profile,
+                "depth_module.depth_profile": profile,
+                # a reset re-enumerates the camera; on USB 2 / behind a hub the node then
+                # never reconnects (hangs after "Resetting device...")
+                "initial_reset": LaunchConfiguration("wrist_initial_reset"),
                 "wait_for_device_timeout": "10.0",
             }.items(),
         ),

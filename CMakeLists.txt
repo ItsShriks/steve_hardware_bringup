@@ -29,6 +29,8 @@ install(DIRECTORY
 # Tools: ros2 run steve_hardware_bringup steve_doctor
 install(PROGRAMS
   scripts/steve_doctor
+  scripts/ur_autostart
+  scripts/arm_velocity_watchdog
   DESTINATION lib/${PROJECT_NAME}
 )
 

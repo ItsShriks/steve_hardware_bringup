@@ -52,9 +52,15 @@ If you need to stop the automatic session and run drivers manually for debugging
 
 **Optional Arguments:**
 - `arm_type:=ur5e` (default: ur5e)
-- `enable_camera:=true` (default: true) — pan-tilt L515
+- `enable_camera:=true` (default: false) — pan-tilt L515
+- `enable_pan_tilt:=true` (default: false) — pan-tilt motors
 - `enable_wrist_camera:=true` (default: true) — wrist D405 (`wrist_camera.launch.py`)
-- `enable_joystick:=true` (default: true)
+- `enable_joystick:=true` (default: true) — `false` for WBC tests: `neo_teleop2` publishes
+  `/cmd_vel` continuously and would override the controller's base commands
+- `ur_autostart:=true` (default: true) — `ur_autostart` node: presses PLAY on the External
+  Control program once the arm is powered on (robot mode RUNNING, safety NORMAL, remote
+  control) and re-activates `scaled_joint_trajectory_controller` after every program start.
+  It never powers the arm on, releases the brakes or moves it.
 - `arm_tool:=robotiq_2f_85` — adds the gripper to the robot description/TF (default `none`).
   MoveIt (`steve_manipulation`) and the WBC need it; set it in `ROS_AUTOSTART.sh`.
 
@@ -122,6 +128,23 @@ manipulator) subscribe to `/emergency_stop_state` and stop **base and arm** whil
 active or the scanner field is red — see `steve_manipulation/safety_stop.py`.
 
 ---
+
+## Remote PC (RViz etc. over Wi-Fi)
+
+Multicast discovery is blocked on the lab Wi-Fi, and its access points drop fragmented UDP
+packets — so a PC saw no topics, or small ones (`/odom`) but never `/robot_description` or images.
+
+* **Robot:** `config/fastdds_steve.xml` (exported as `FASTRTPS_DEFAULT_PROFILES_FILE` in `~/.bashrc`
+  and `~/ROS_AUTOSTART.sh`): UDP datagrams ≤ 1400 B, shared memory inside the robot.
+* **PC:** `config/fastdds_remote_pc.xml` → copy to `~/.ros/fastdds_steve.xml`: unicast discovery to
+  10.7.4.213 (one locator per robot participant) and the same 1400 B limit.
+
+```bash
+source /opt/ros/humble/setup.bash && source ~/steve_ros2_ws/install/setup.bash
+export ROS_DOMAIN_ID=74 RMW_IMPLEMENTATION=rmw_fastrtps_cpp FASTRTPS_DEFAULT_PROFILES_FILE=~/.ros/fastdds_steve.xml
+ros2 daemon stop   # the daemon keeps old settings
+rviz2              # RobotModel: topic /robot_description, Fixed Frame odom
+```
 
 ## Hardware Dependencies
 

@@ -11,7 +11,7 @@
 network:
   # UR5e controller (pendant: Settings > System > Network). The PC needs an address on the
   # same subnet; steve_doctor checks reachability and the dashboard / RTDE ports.
-  ur_robot_ip: 192.168.1.102
+  ur_robot_ip: 192.168.1.11       # found by steve_doctor 2026-09-28 (UR5e serial 20205500307, PolyScope 5.16)
   # This PC's address on the UR subnet for the External Control URCap (pendant: Installation >
   # URCaps > External Control > Host IP). "" = let the driver choose (0.0.0.0).
   ur_reverse_ip: ""
@@ -27,4 +27,6 @@ cameras:
   # RealSense cameras by serial number ("" = the first one found, ambiguous with two cameras).
   # steve_doctor lists the connected cameras and their serials.
   pan_tilt_l515_serial: ""
-  wrist_d405_serial: ""
+  # Wrist camera: model (realsense2_camera device_type: d415, d405, ...) and serial.
+  wrist_camera_model: d415
+  wrist_camera_serial: "840412060445"   # D415, fw 5.17.0.10 (2026-09-28)

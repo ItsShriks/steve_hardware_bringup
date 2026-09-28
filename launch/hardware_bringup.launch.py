@@ -115,14 +115,16 @@ def execution_stage(
     )
     launches.append(lidar)
 
-    # 3. Teleop
-    teleop = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(pkg_share, "launch", "teleop.launch.py")
-        ),
-        launch_arguments={"namespace": robot_namespace}.items(),
-    )
-    launches.append(teleop)
+    # 3. Teleop (off for WBC tests: neo_teleop2 publishes /cmd_vel continuously and
+    #    would override the controller's base commands)
+    if LaunchConfiguration("enable_joystick").perform(context).lower() == "true":
+        teleop = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(pkg_share, "launch", "teleop.launch.py")
+            ),
+            launch_arguments={"namespace": robot_namespace}.items(),
+        )
+        launches.append(teleop)
 
     # 4. UR5e Arm
     if arm_typ in ["ur5", "ur10", "ur5e", "ur10e"]:
@@ -139,6 +141,27 @@ def execution_stage(
         )
         launches.append(ur_arm)
 
+        # PLAY External Control + keep the trajectory controller active (no power-on, no motion)
+        if LaunchConfiguration("ur_autostart").perform(context).lower() == "true":
+            launches.append(Node(
+                package="steve_hardware_bringup",
+                executable="ur_autostart",
+                name="ur_autostart",
+                output="screen",
+                parameters=[{"robot_ip": robot_ip.perform(context)}],
+            ))
+
+        # Sole publisher to forward_velocity_controller: zero velocity if the commanding
+        # script stops sending (respawned, so the arm is never left with a stale velocity)
+        launches.append(Node(
+            package="steve_hardware_bringup",
+            executable="arm_velocity_watchdog",
+            name="arm_velocity_watchdog",
+            output="screen",
+            respawn=True,
+            respawn_delay=0.5,
+        ))
+
     # 5. Pan-Tilt Unit
     if enable_pt == "true" or enable_pt == "True":
         pan_tilt = IncludeLaunchDescription(
@@ -152,7 +175,7 @@ def execution_stage(
         )
         launches.append(pan_tilt)
 
-    # 6. Wrist D405 (bound by serial number from robot_config.yaml)
+    # 6. Wrist camera (D415/D405, model + serial from robot_config.yaml)
     if LaunchConfiguration("enable_wrist_camera").perform(context).lower() == "true":
         launches.append(IncludeLaunchDescription(
             PythonLaunchDescriptionSource(os.path.join(pkg_share, "launch", "wrist_camera.launch.py"))))
@@ -231,20 +254,33 @@ def generate_launch_description():
 
     declare_camera_cmd = DeclareLaunchArgument(
         "enable_camera",
-        default_value="true",
+        default_value="false",  # pan-tilt tower (motors + L515) not in use for now
         description="Enable RealSense L515 camera - Options: true/false",
     )
 
     declare_wrist_camera_cmd = DeclareLaunchArgument(
         "enable_wrist_camera",
         default_value="true",
-        description="Enable the wrist RealSense D405 (serial from robot_config.yaml) - Options: true/false",
+        description="Enable the wrist RealSense (model + serial from robot_config.yaml) - Options: true/false",
     )
 
     declare_pan_tilt_cmd = DeclareLaunchArgument(
         "enable_pan_tilt",
-        default_value="true",
+        default_value="false",  # pan-tilt tower (motors + L515) not in use for now
         description="Enable pan-tilt motors - Options: true/false",
+    )
+
+    declare_joystick_cmd = DeclareLaunchArgument(
+        "enable_joystick",
+        default_value="true",
+        description="Joystick teleop (joy + neo_teleop2) - false for WBC / MoveIt base tests",
+    )
+
+    declare_ur_autostart_cmd = DeclareLaunchArgument(
+        "ur_autostart",
+        default_value="true",
+        description="PLAY the External Control program when the arm is powered on and keep "
+                    "scaled_joint_trajectory_controller active (never powers on or moves the arm)",
     )
 
     # Opaque function for configuring all hardware
@@ -264,6 +300,8 @@ def generate_launch_description():
     ld.add_action(declare_camera_cmd)
     ld.add_action(declare_pan_tilt_cmd)
     ld.add_action(declare_wrist_camera_cmd)
+    ld.add_action(declare_joystick_cmd)
+    ld.add_action(declare_ur_autostart_cmd)
     ld.add_action(opq_function)
 
     return ld

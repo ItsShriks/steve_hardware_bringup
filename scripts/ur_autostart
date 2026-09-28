@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""
+ur_autostart — keeps the UR5e ready for ROS commands (started by hardware_bringup.launch.py).
+
+  * presses PLAY on the External Control program (dashboard, port 29999) whenever it is not
+    running, but only if the arm is powered on, brakes released (robot mode RUNNING), safety
+    NORMAL and in remote control. It never powers the arm on or releases the brakes: that
+    stays a deliberate action at the pendant or via /dashboard_client/power_on, brake_release.
+  * activates the trajectory controller (scaled_joint_trajectory_controller) each time the
+    program (re)starts — the driver's controller_stopper leaves it inactive otherwise —
+    unless another arm command controller (forward_*) is active on purpose.
+
+It never sends a motion command.
+
+    ros2 run steve_hardware_bringup ur_autostart --ros-args -p robot_ip:=192.168.1.11
+"""
+
+import socket
+import time
+
+import rclpy
+from controller_manager_msgs.srv import ListControllers, SwitchController
+from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import Bool
+
+DASHBOARD_PORT = 29999
+ARM_COMMAND_CONTROLLERS = ("forward_position_controller", "forward_velocity_controller",
+                           "joint_trajectory_controller")
+
+
+class UrAutostart(Node):
+    def __init__(self):
+        super().__init__("ur_autostart")
+        self.robot_ip = self.declare_parameter("robot_ip", "192.168.1.11").value
+        self.controller = self.declare_parameter(
+            "controller", "scaled_joint_trajectory_controller").value
+        self.auto_play = self.declare_parameter("auto_play", True).value
+        self.startup_delay = self.declare_parameter("startup_delay", 5.0).value  # driver ready
+        self.play_retry = self.declare_parameter("play_retry", 10.0).value      # [s]
+
+        self.program_running = None   # from the driver, None until the driver is up
+        self.first_status = None
+        self.last_play = 0.0
+        self.need_activation = True   # after every program (re)start
+        self.last_reason = ""
+        self.pending = None
+
+        # latched by the driver (published on change only): transient local to get the value
+        latched = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                             durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.create_subscription(Bool, "/io_and_status_controller/robot_program_running",
+                                 self._program_cb, latched)
+        self.list_cli = self.create_client(ListControllers, "/controller_manager/list_controllers")
+        self.switch_cli = self.create_client(SwitchController,
+                                             "/controller_manager/switch_controller")
+        self.create_timer(1.0, self._tick)
+        self.get_logger().info(f"UR at {self.robot_ip}: auto play={self.auto_play}, "
+                               f"keeps '{self.controller}' active")
+
+    # ── helpers ──────────────────────────────────────────────────────────────
+    def _program_cb(self, msg):
+        if self.first_status is None:
+            self.first_status = time.monotonic()
+        if msg.data and not self.program_running:
+            self.need_activation = True
+            self.get_logger().info("External Control program running")
+        self.program_running = msg.data
+
+    def _dashboard(self, *cmds):
+        """Send dashboard commands, return the reply lines (None if unreachable)."""
+        try:
+            with socket.create_connection((self.robot_ip, DASHBOARD_PORT), timeout=2.0) as s:
+                f = s.makefile("rw", newline="\n")
+                f.readline()  # "Connected: Universal Robots Dashboard Server"
+                replies = []
+                for c in cmds:
+                    f.write(c + "\n")
+                    f.flush()
+                    replies.append(f.readline().strip())
+                return replies
+        except OSError as e:
+            self._once(f"dashboard {self.robot_ip}:{DASHBOARD_PORT} not reachable ({e})")
+            return None
+
+    def _once(self, reason):
+        """Log a waiting reason once (not every second)."""
+        if reason != self.last_reason:
+            self.get_logger().warn(reason)
+            self.last_reason = reason
+
+    # ── main loop ────────────────────────────────────────────────────────────
+    def _tick(self):
+        if self.first_status is None or time.monotonic() - self.first_status < self.startup_delay:
+            return  # UR driver not up yet (its reverse interface must listen before PLAY)
+        if self.program_running:
+            self.last_reason = ""
+            if self.need_activation and self.pending is None:
+                self._check_controllers()
+            return
+        if self.auto_play and time.monotonic() - self.last_play > self.play_retry:
+            self._try_play()
+
+    def _try_play(self):
+        r = self._dashboard("robotmode", "safetystatus", "is in remote control",
+                            "get loaded program")
+        if r is None:
+            return
+        mode, safety, remote, program = r
+        if "RUNNING" not in mode:
+            self._once(f"arm not ready ({mode}): power on + release brakes at the pendant or "
+                       "ros2 service call /dashboard_client/power_on std_srvs/srv/Trigger, "
+                       "then .../brake_release — PLAY follows automatically")
+            return
+        if "NORMAL" not in safety:
+            self._once(f"safety status {safety}: clear it at the pendant")
+            return
+        if "true" not in remote.lower():
+            self._once("pendant in LOCAL mode: switch to REMOTE (or press PLAY at the pendant)")
+            return
+        if "external_control" not in program:
+            self._once(f"loaded program is not External Control ({program})")
+            return
+        self.last_play = time.monotonic()
+        reply = self._dashboard("play")
+        self.get_logger().info(f"PLAY external_control: {reply[0] if reply else 'no reply'}")
+
+    def _check_controllers(self):
+        if not self.list_cli.service_is_ready():
+            return
+        self.pending = self.list_cli.call_async(ListControllers.Request())
+        self.pending.add_done_callback(self._on_list)
+
+    def _on_list(self, fut):
+        self.pending = None
+        try:
+            states = {c.name: c.state for c in fut.result().controller}
+        except Exception as e:  # noqa: BLE001 - service failure, retry next tick
+            self.get_logger().warn(f"list_controllers failed: {e}")
+            return
+        if states.get(self.controller) == "active":
+            self.need_activation = False
+            return
+        others = [n for n in ARM_COMMAND_CONTROLLERS
+                  if n != self.controller and states.get(n) == "active"]
+        if others:
+            self.get_logger().info(f"{others} active — leaving '{self.controller}' inactive")
+            self.need_activation = False
+            return
+        if self.controller not in states:
+            self._once(f"controller '{self.controller}' not loaded")
+            return
+        req = SwitchController.Request(activate_controllers=[self.controller], strictness=1)
+        self.pending = self.switch_cli.call_async(req)
+        self.pending.add_done_callback(self._on_switch)
+
+    def _on_switch(self, fut):
+        self.pending = None
+        ok = fut.result() is not None and fut.result().ok
+        self.get_logger().info(f"activate '{self.controller}': {'ok' if ok else 'FAILED'}")
+        self.need_activation = not ok
+
+
+def main():
+    rclpy.init()
+    node = UrAutostart()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
+
+
+if __name__ == "__main__":
+    main()

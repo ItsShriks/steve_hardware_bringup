@@ -6,6 +6,8 @@ Launches UR5e arm driver with proper configuration
 
 import os
 
+import yaml
+
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -128,6 +130,16 @@ def launch_setup(context, *args, **kwargs):
         ]
     )
 
+    # ur_robot_driver >= 2.x: its ur_controllers.yaml uses '$(var update_rate)'; expose the
+    # controller_manager update rate as a launch configuration (as ur_control.launch.py does)
+    try:
+        with open(update_rate_config_file.perform(context)) as f:
+            update_rate = yaml.safe_load(f)["controller_manager"]["ros__parameters"]["update_rate"]
+        context.launch_configurations["update_rate"] = str(update_rate)
+    except (OSError, KeyError, TypeError) as e:
+        print(f"[WARN] ur5e_arm: update_rate not read ({e}); using 500 Hz")
+        context.launch_configurations["update_rate"] = "500"
+
     ur_control_node = Node(
         package="ur_robot_driver",
         executable="ur_ros2_control_node",
@@ -216,7 +228,9 @@ def launch_setup(context, *args, **kwargs):
         "speed_scaling_state_broadcaster",
         "force_torque_sensor_broadcaster",
     ]
-    controller_spawner_inactive_names = ["forward_position_controller"]
+    # forward_velocity_controller: streamed velocity control (steve_wbc --arm_interface velocity,
+    # fed through arm_velocity_watchdog)
+    controller_spawner_inactive_names = ["forward_position_controller", "forward_velocity_controller"]
 
     controller_spawners = [controller_spawner(name) for name in controller_spawner_names] + [
         controller_spawner(name, active=False) for name in controller_spawner_inactive_names

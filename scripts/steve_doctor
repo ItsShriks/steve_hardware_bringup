@@ -193,7 +193,9 @@ def check_cameras(cfg, write, cfg_path):
         print(f"      {model:22s} serial {serial}")
     if not devs:
         report(FAIL, "RealSense cameras", "none found", "USB 3 cable/port? (lsusb | grep Intel)")
-    want = {"pan_tilt_l515_serial": "L515", "wrist_d405_serial": "D405"}
+    wrist_key = "wrist_camera_serial" if "wrist_camera_serial" in cfg["cameras"] else "wrist_d405_serial"
+    want = {"pan_tilt_l515_serial": "L515",
+            wrist_key: str(cfg["cameras"].get("wrist_camera_model") or "d405").upper()}
     found = {}
     for key, model in want.items():
         conf = str(cfg["cameras"].get(key) or "").strip().lstrip("_")
