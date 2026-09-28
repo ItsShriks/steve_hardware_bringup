@@ -26,6 +26,12 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/
 )
 
+# Tools: ros2 run steve_hardware_bringup steve_doctor
+install(PROGRAMS
+  scripts/steve_doctor
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()

@@ -20,6 +20,20 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+# Robot-specific defaults (IPs, devices, camera serials): steve_hardware_bringup/config/robot_config.yaml
+import sys as _sys
+_sys.path.insert(0, os.path.join(get_package_share_directory("steve_hardware_bringup"), "config"))
+try:
+    from steve_config import robot_config  # noqa: E402
+    ROBOT_CFG = robot_config()
+except Exception as _e:  # the config must never break the bringup: built-in defaults
+    print(f"[WARN] robot_config.yaml not loaded ({_e}) - using built-in defaults. Rebuild: "
+          "colcon build --symlink-install --packages-select steve_hardware_bringup")
+    ROBOT_CFG = {"network": {"ur_robot_ip": "192.168.1.102", "ur_reverse_ip": ""},
+                 "devices": {"relayboard": "/dev/neo-relayboard", "lidar_1": "/dev/neo-s300-1",
+                             "lidar_2": "/dev/neo-s300-2"},
+                 "cameras": {"pan_tilt_l515_serial": "", "wrist_d405_serial": ""}}
+
 
 def execution_stage(
     context: LaunchContext,
@@ -63,6 +77,9 @@ def execution_stage(
             "include_wrist_camera": enable_cam,
             "include_depth_camera": "false",
             "include_pan_tilt": enable_pt,
+            # robotiq_2f_85 adds the gripper links/TF (no gripper ros2_control here)
+            "arm_tool": LaunchConfiguration("arm_tool").perform(context),
+            "gripper_hw": "none",
         },
     ).toxml()
 
@@ -135,6 +152,11 @@ def execution_stage(
         )
         launches.append(pan_tilt)
 
+    # 6. Wrist D405 (bound by serial number from robot_config.yaml)
+    if LaunchConfiguration("enable_wrist_camera").perform(context).lower() == "true":
+        launches.append(IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(pkg_share, "launch", "wrist_camera.launch.py"))))
+
     # Relaying lidar data to /scan topic
     relay_topic_lidar1 = Node(
         package="topic_tools",
@@ -203,7 +225,7 @@ def generate_launch_description():
 
     declare_robot_ip_cmd = DeclareLaunchArgument(
         "robot_ip",
-        default_value="192.168.1.102",
+        default_value=str(ROBOT_CFG["network"]["ur_robot_ip"]),  # robot_config.yaml
         description="IP address of the UR arm",
     )
 
@@ -211,6 +233,12 @@ def generate_launch_description():
         "enable_camera",
         default_value="true",
         description="Enable RealSense L515 camera - Options: true/false",
+    )
+
+    declare_wrist_camera_cmd = DeclareLaunchArgument(
+        "enable_wrist_camera",
+        default_value="true",
+        description="Enable the wrist RealSense D405 (serial from robot_config.yaml) - Options: true/false",
     )
 
     declare_pan_tilt_cmd = DeclareLaunchArgument(
@@ -222,12 +250,20 @@ def generate_launch_description():
     # Opaque function for configuring all hardware
     opq_function = OpaqueFunction(function=execution_stage, args=context_arguments)
 
+    declare_arm_tool_cmd = DeclareLaunchArgument(
+        "arm_tool",
+        default_value="none",
+        description="End effector in the robot description: none or robotiq_2f_85",
+    )
+
     ld = LaunchDescription()
+    ld.add_action(declare_arm_tool_cmd)
     ld.add_action(declare_namespace_cmd)
     ld.add_action(declare_arm_cmd)
     ld.add_action(declare_robot_ip_cmd)
     ld.add_action(declare_camera_cmd)
     ld.add_action(declare_pan_tilt_cmd)
+    ld.add_action(declare_wrist_camera_cmd)
     ld.add_action(opq_function)
 
     return ld

@@ -12,6 +12,25 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+# Robot-specific defaults (IPs, devices, camera serials): steve_hardware_bringup/config/robot_config.yaml
+import sys as _sys
+_sys.path.insert(0, os.path.join(get_package_share_directory("steve_hardware_bringup"), "config"))
+try:
+    from steve_config import robot_config  # noqa: E402
+    ROBOT_CFG = robot_config()
+except Exception as _e:  # the config must never break the bringup: built-in defaults
+    print(f"[WARN] robot_config.yaml not loaded ({_e}) - using built-in defaults. Rebuild: "
+          "colcon build --symlink-install --packages-select steve_hardware_bringup")
+    ROBOT_CFG = {"network": {"ur_robot_ip": "192.168.1.102", "ur_reverse_ip": ""},
+                 "devices": {"relayboard": "/dev/neo-relayboard", "lidar_1": "/dev/neo-s300-1",
+                             "lidar_2": "/dev/neo-s300-2"},
+                 "cameras": {"pan_tilt_l515_serial": "", "wrist_d405_serial": ""}}
+
+
+def rs_serial(serial):
+    """realsense2_camera serial_no argument ('' = any camera; '_' keeps digits a string)."""
+    return f"_{serial}" if str(serial or "").strip() else "''"
 import math
 
 
@@ -19,7 +38,7 @@ def generate_launch_description():
     # Launch configurations
     robot_namespace = LaunchConfiguration('namespace', default='')
     enable_camera = LaunchConfiguration('enable_camera', default='true')
-    camera_serial_no = LaunchConfiguration('camera_serial_no', default="''")
+    camera_serial_no = LaunchConfiguration('camera_serial_no', default=rs_serial(ROBOT_CFG['cameras'].get('pan_tilt_l515_serial')))
     usb_port_id = LaunchConfiguration('usb_port_id', default="''")
 
     # Declare launch arguments
@@ -37,8 +56,8 @@ def generate_launch_description():
 
     declare_serial_no_cmd = DeclareLaunchArgument(
         'camera_serial_no',
-        default_value="''",
-        description='Serial number of the RealSense camera (leave empty to auto-detect)'
+        default_value=rs_serial(ROBOT_CFG['cameras'].get('pan_tilt_l515_serial')),
+        description='Serial of the L515 as _<digits> (default: robot_config.yaml; \'\' = first camera found)'
     )
 
     declare_usb_port_cmd = DeclareLaunchArgument(

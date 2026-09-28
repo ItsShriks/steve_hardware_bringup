@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Steve robot configuration: everything that can differ between robots, labs and
+# re-wirings. Launch files take their defaults from here (a launch argument still
+# overrides), so after a change nothing else has to be edited.
+#
+#   check against the hardware : ros2 run steve_hardware_bringup steve_doctor
+#   another file               : export STEVE_ROBOT_CONFIG=/path/to/robot_config.yaml
+#   single value (no edit)     : export STEVE_UR_ROBOT_IP=192.168.1.50  (see steve_config.py)
+# ─────────────────────────────────────────────────────────────────────────────
+
+network:
+  # UR5e controller (pendant: Settings > System > Network). The PC needs an address on the
+  # same subnet; steve_doctor checks reachability and the dashboard / RTDE ports.
+  ur_robot_ip: 192.168.1.102
+  # This PC's address on the UR subnet for the External Control URCap (pendant: Installation >
+  # URCaps > External Control > Host IP). "" = let the driver choose (0.0.0.0).
+  ur_reverse_ip: ""
+
+devices:
+  # Serial devices by their stable udev names (not /dev/ttyUSBx, which change with the plug-in
+  # order). steve_doctor --udev writes the rules that create these names.
+  relayboard: /dev/neo-relayboard
+  lidar_1: /dev/neo-s300-1          # front scanner
+  lidar_2: /dev/neo-s300-2          # back scanner
+
+cameras:
+  # RealSense cameras by serial number ("" = the first one found, ambiguous with two cameras).
+  # steve_doctor lists the connected cameras and their serials.
+  pan_tilt_l515_serial: ""
+  wrist_d405_serial: ""

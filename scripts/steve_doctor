@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""
+steve_doctor — checks robot_config.yaml against the real hardware (sim2real setup check).
+
+    ros2 run steve_hardware_bringup steve_doctor                 # network, devices, cameras
+    ros2 run steve_hardware_bringup steve_doctor --ros           # + are the robot topics alive?
+    ros2 run steve_hardware_bringup steve_doctor --write-config  # store detected camera serials
+    ros2 run steve_hardware_bringup steve_doctor --udev neo-relayboard=/dev/ttyUSB0 \\
+        neo-s300-1=/dev/ttyUSB1 neo-s300-2=/dev/ttyUSB2          # write 99-steve.rules
+
+Network   this PC's IPv4 addresses, UR controller reachable (ping, dashboard 29999, RTDE 30004),
+          robot mode / program state / remote control from the UR dashboard, reverse_ip hint.
+Devices   configured serial ports exist and which USB device they are; all ttyUSB/ttyACM
+          with vendor, product and serial number (to write udev rules that survive re-plugging).
+Cameras   connected RealSense cameras and their serials vs. robot_config.yaml.
+ROS       /joint_states, /odom, /emergency_stop_state, LiDAR scans, camera images publishing.
+"""
+
+import argparse
+import glob
+import ipaddress
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+
+import yaml
+
+OK, WARN, FAIL = "\033[32m✔\033[0m", "\033[33m⚠\033[0m", "\033[31m✘\033[0m"
+results = []
+
+
+def report(status, what, detail="", hint=""):
+    results.append(status)
+    print(f"  {status} {what}" + (f": {detail}" if detail else ""))
+    if hint:
+        print(f"      → {hint}")
+
+
+def load_config():
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        cfg_dir = os.path.join(get_package_share_directory("steve_hardware_bringup"), "config")
+    except Exception:  # not sourced: next to this script in the source tree
+        cfg_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "config")
+    sys.path.insert(0, cfg_dir)
+    from steve_config import config_path, robot_config
+    return config_path(), robot_config()
+
+
+def run(cmd, timeout=5):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+# ── network ──────────────────────────────────────────────────────────────────
+def local_ipv4():
+    out = run(["ip", "-4", "-o", "addr", "show"])
+    return [(m.group(1), ipaddress.ip_interface(m.group(2)))
+            for m in re.finditer(r"^\d+:\s+(\S+)\s+inet\s+(\S+)", out, re.M) if m.group(1) != "lo"]
+
+
+def dashboard(ip, command):
+    try:
+        with socket.create_connection((ip, 29999), timeout=2.0) as s:
+            s.settimeout(2.0)
+            s.recv(1024)  # banner
+            s.sendall((command + "\n").encode())
+            return s.recv(1024).decode(errors="replace").strip()
+    except OSError as e:
+        return f"<{e}>"
+
+
+def port_open(ip, port):
+    try:
+        with socket.create_connection((ip, port), timeout=1.5):
+            return True
+    except OSError:
+        return False
+
+
+def check_network(cfg):
+    print("\nNetwork")
+    ifaces = local_ipv4()
+    print("  this PC: " + (", ".join(f"{n} {i.with_prefixlen}" for n, i in ifaces) or "no IPv4 address"))
+    ip = str(cfg["network"].get("ur_robot_ip", "")).strip()
+    if not ip:
+        report(FAIL, "UR robot IP", "not set", "set network.ur_robot_ip in robot_config.yaml")
+        return
+    same = [(n, i) for n, i in ifaces if ipaddress.ip_address(ip) in i.network]
+    if same:
+        report(OK, "PC on the UR subnet", f"{same[0][0]} {same[0][1].ip}")
+    else:
+        report(FAIL, "PC on the UR subnet", f"no interface in the subnet of {ip}",
+               f"give the robot-facing NIC an address like {ipaddress.ip_address(ip) + 1}/24 "
+               "(or check network.ur_robot_ip)")
+    ping_ok = subprocess.run(["ping", "-c", "1", "-W", "1", ip], capture_output=True).returncode == 0
+    report(OK if ping_ok else FAIL, f"UR controller {ip} answers ping", "",
+           "" if ping_ok else "cable / switch / IP on the pendant (Settings > System > Network)")
+    for port, name in ((29999, "dashboard"), (30004, "RTDE"), (30002, "secondary interface")):
+        op = port_open(ip, port)
+        report(OK if op else FAIL, f"UR {name} port {port}", "open" if op else "closed")
+    if port_open(ip, 29999):
+        mode = dashboard(ip, "robotmode")
+        prog = dashboard(ip, "programState")
+        remote = dashboard(ip, "is in remote control")
+        report(OK if "RUNNING" in mode else WARN, "UR robot mode", mode,
+               "" if "RUNNING" in mode else "power on and release the brakes on the pendant")
+        report(OK if "PLAYING" in prog else WARN, "UR program", prog,
+               "" if "PLAYING" in prog else "start the External Control program on the pendant "
+                                             "(the driver runs with headless_mode:=false)")
+        print(f"      remote control: {remote}")
+    rev = str(cfg["network"].get("ur_reverse_ip", "") or "")
+    if rev and not any(str(i.ip) == rev for _, i in ifaces):
+        report(FAIL, "reverse IP", f"{rev} is not an address of this PC",
+               f"set network.ur_reverse_ip to {same[0][1].ip if same else '<PC address on the UR subnet>'} or ''")
+    elif same:
+        print(f"      External Control URCap host IP on the pendant must be {rev or same[0][1].ip}")
+
+
+# ── serial devices ───────────────────────────────────────────────────────────
+def udev_props(dev):
+    out = run(["udevadm", "info", "-q", "property", "-n", dev])
+    return dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+
+
+def describe(dev):
+    p = udev_props(dev)
+    return (p.get("ID_VENDOR_ID", "?"), p.get("ID_MODEL_ID", "?"), p.get("ID_SERIAL_SHORT", ""),
+            p.get("ID_MODEL", p.get("ID_MODEL_FROM_DATABASE", "?")))
+
+
+def check_devices(cfg):
+    print("\nSerial devices")
+    for name, path in (cfg.get("devices") or {}).items():
+        if os.path.exists(path):
+            real = os.path.realpath(path)
+            v, pr, sn, model = describe(real)
+            report(OK, f"{name} {path}", f"-> {real}  ({model} {v}:{pr} serial {sn or '-'})")
+        else:
+            report(FAIL, f"{name} {path}", "missing",
+                   "plugged in? then create the name: steve_doctor --udev "
+                   f"{os.path.basename(path)}=/dev/ttyUSBx  (see the list below)")
+    ports = sorted(glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*"))
+    print("  connected USB serial ports:" + ("" if ports else " none"))
+    for dev in ports:
+        v, pr, sn, model = describe(dev)
+        links = [l for l in glob.glob("/dev/*") if os.path.islink(l) and os.path.realpath(l) == dev]
+        print(f"      {dev:14s} {model:28s} {v}:{pr} serial {sn or '-':16s} {' '.join(links)}")
+
+
+def write_udev(specs):
+    lines = ["# Steve stable device names — generated by steve_doctor --udev",
+             "# install: sudo cp 99-steve.rules /etc/udev/rules.d/ && sudo udevadm control --reload"
+             " && sudo udevadm trigger"]
+    for spec in specs:
+        name, dev = spec.split("=", 1)
+        v, pr, sn, model = describe(dev)
+        if v == "?":
+            sys.exit(f"[ERROR] {dev}: no USB device found")
+        match = f'SUBSYSTEM=="tty", ATTRS{{idVendor}}=="{v}", ATTRS{{idProduct}}=="{pr}"'
+        if sn:
+            match += f', ATTRS{{serial}}=="{sn}"'
+        else:  # no serial number: bind to the physical USB port instead
+            path = udev_props(dev).get("ID_PATH", "")
+            match += f', ENV{{ID_PATH}}=="{path}"'
+            print(f"  {WARN} {dev} has no USB serial number — bound to its USB port ({path}); "
+                  "keep it on that port")
+        lines.append(f'{match}, SYMLINK+="{name}", MODE="0666"  # {model}')
+    with open("99-steve.rules", "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print("\n".join(lines))
+    print("\nwritten: ./99-steve.rules")
+
+
+# ── cameras ──────────────────────────────────────────────────────────────────
+def realsense_devices():
+    out = run(["rs-enumerate-devices", "-s"], timeout=15)
+    return re.findall(r"(Intel RealSense \S+)\s+(\d{6,})", out)
+
+
+def check_cameras(cfg, write, cfg_path):
+    print("\nCameras (RealSense)")
+    if not shutil.which("rs-enumerate-devices"):
+        report(WARN, "rs-enumerate-devices", "not installed (librealsense2-utils)")
+        return
+    devs = realsense_devices()
+    for model, serial in devs:
+        print(f"      {model:22s} serial {serial}")
+    if not devs:
+        report(FAIL, "RealSense cameras", "none found", "USB 3 cable/port? (lsusb | grep Intel)")
+    want = {"pan_tilt_l515_serial": "L515", "wrist_d405_serial": "D405"}
+    found = {}
+    for key, model in want.items():
+        conf = str(cfg["cameras"].get(key) or "").strip().lstrip("_")
+        match = [s for m, s in devs if model in m]
+        if conf:
+            ok = conf in [s for _, s in devs]
+            report(OK if ok else FAIL, f"{key} {conf}", "connected" if ok else "not connected",
+                   "" if ok else f"connected {model}: {', '.join(match) or 'none'}")
+        elif len(match) == 1:
+            found[key] = match[0]
+            report(WARN, key, f"not set — the connected {model} is {match[0]}",
+                   "store it with --write-config (bound by serial, independent of USB ports)")
+        else:
+            report(WARN, key, f"not set ({len(match)} {model} connected)")
+    if write and found:
+        with open(cfg_path) as f:
+            text = f.read()
+        for key, serial in found.items():
+            text = re.sub(rf'({key}:\s*)"[^"]*"', rf'\g<1>"{serial}"', text)
+        with open(cfg_path, "w") as f:
+            f.write(text)
+        print(f"  written to {cfg_path}: {found}")
+
+
+# ── ROS ──────────────────────────────────────────────────────────────────────
+def check_ros(timeout=4.0):
+    print("\nROS topics")
+    import time
+    import rclpy
+    from rclpy.qos import qos_profile_sensor_data
+    from rosidl_runtime_py.utilities import get_message
+    rclpy.init()
+    node = rclpy.create_node("steve_doctor")
+    wanted = ["/joint_states", "/odom", "/emergency_stop_state", "/lidar_1/scan_filtered",
+              "/lidar_2/scan_filtered", "/pan_tilt_camera/pan_tilt_camera/color/image_raw",
+              "/wrist_camera/wrist_camera/color/image_raw"]
+    time.sleep(1.5)  # discovery
+    types = dict(node.get_topic_names_and_types())
+    counts, last = {t: 0 for t in wanted}, {}
+    for t in wanted:
+        if t in types:
+            def cb(msg, t=t):
+                counts[t] += 1
+                last[t] = msg
+            node.create_subscription(get_message(types[t][0]), t, cb, qos_profile_sensor_data)
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < timeout:
+        rclpy.spin_once(node, timeout_sec=0.1)
+    for t in wanted:
+        if t not in types:
+            report(FAIL, t, "not advertised")
+        else:
+            hz = counts[t] / timeout
+            report(OK if hz > 0.5 else FAIL, t, f"{hz:.1f} Hz")
+    em = last.get("/emergency_stop_state")
+    if em is not None:
+        state = {0: "free", 1: "EM STOP", 2: "confirmed"}.get(em.emergency_state, em.emergency_state)
+        report(OK if em.emergency_state == 0 and not em.scanner_stop else WARN, "EM-stop state",
+               f"{state}, button={em.emergency_button_stop}, scanner field={em.scanner_stop}")
+    out = run(["ros2", "control", "list_controllers"], timeout=10)
+    ctrl = "scaled_joint_trajectory_controller"
+    active = re.search(rf"{ctrl}\S*\s+\S+\s+(\S*active\S*)", out)
+    report(OK if active and "inactive" not in active.group(1) else FAIL, ctrl,
+           "active" if active and "inactive" not in active.group(1) else "not active",
+           "" if active else "is the UR driver running and the External Control program playing?")
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--ros", action="store_true", help="also check the robot's ROS topics")
+    p.add_argument("--write-config", action="store_true", help="store detected camera serials")
+    p.add_argument("--udev", nargs="+", metavar="NAME=/dev/ttyUSBx", help="write 99-steve.rules")
+    a = p.parse_args()
+    cfg_path, cfg = load_config()
+    if a.udev:
+        write_udev(a.udev)
+        return 0
+    print(f"steve_doctor — config {cfg_path}")
+    check_network(cfg)
+    check_devices(cfg)
+    check_cameras(cfg, a.write_config, cfg_path)
+    if a.ros:
+        check_ros()
+    n_fail, n_warn = results.count(FAIL), results.count(WARN)
+    print(f"\n{'all good' if not n_fail and not n_warn else f'{n_fail} problem(s), {n_warn} warning(s)'}")
+    return 1 if n_fail else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
