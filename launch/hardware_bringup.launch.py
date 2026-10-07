@@ -76,7 +76,9 @@ def execution_stage(
             "arm_type": arm_typ,
             "include_wrist_camera": enable_cam,
             "include_depth_camera": "false",
-            "include_pan_tilt": enable_pt,
+            # the tower is always in the description (an obstacle for TF / RViz / MoveIt / WBC);
+            # enable_pan_tilt only switches its motors + camera
+            "include_pan_tilt": "true",
             # robotiq_2f_85 adds the gripper links/TF (no gripper ros2_control here)
             "arm_tool": LaunchConfiguration("arm_tool").perform(context),
             "gripper_hw": "none",
@@ -162,6 +164,20 @@ def execution_stage(
             respawn_delay=0.5,
         ))
 
+    # Table model in RViz (MarkerArray /table_probe/markers, odom): the latest `table_probe`
+    # result, reloaded whenever it is measured again (table_viz:= '' disables it)
+    table_viz = LaunchConfiguration("table_viz").perform(context)
+    if table_viz:
+        launches.append(Node(
+            package="steve_wbc",
+            executable="table_probe",
+            name="table_viz",
+            output="screen",
+            arguments=["--show", table_viz],
+            respawn=True,
+            respawn_delay=5.0,
+        ))
+
     # 5. Pan-Tilt Unit
     if enable_pt == "true" or enable_pt == "True":
         pan_tilt = IncludeLaunchDescription(
@@ -174,6 +190,14 @@ def execution_stage(
             }.items(),
         )
         launches.append(pan_tilt)
+    else:
+        # motors off: publish the tower joints at their rest angles (complete TF / robot state)
+        launches.append(Node(
+            package="steve_hardware_bringup",
+            executable="pan_tilt_static_state",
+            name="pan_tilt_static_state",
+            output="screen",
+        ))
 
     # 6. Wrist camera (D415/D405, model + serial from robot_config.yaml)
     if LaunchConfiguration("enable_wrist_camera").perform(context).lower() == "true":
@@ -276,6 +300,13 @@ def generate_launch_description():
         description="Joystick teleop (joy + neo_teleop2) - false for WBC / MoveIt base tests",
     )
 
+    declare_table_viz_cmd = DeclareLaunchArgument(
+        "table_viz",
+        default_value="lab_table",
+        description="table model shown in RViz (steve_wbc config/tables/<name>.yaml, reloaded on "
+                    "change); '' = off",
+    )
+
     declare_ur_autostart_cmd = DeclareLaunchArgument(
         "ur_autostart",
         default_value="true",
@@ -302,6 +333,7 @@ def generate_launch_description():
     ld.add_action(declare_wrist_camera_cmd)
     ld.add_action(declare_joystick_cmd)
     ld.add_action(declare_ur_autostart_cmd)
+    ld.add_action(declare_table_viz_cmd)
     ld.add_action(opq_function)
 
     return ld

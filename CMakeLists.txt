@@ -31,6 +31,7 @@ install(PROGRAMS
   scripts/steve_doctor
   scripts/ur_autostart
   scripts/arm_velocity_watchdog
+  scripts/pan_tilt_static_state
   DESTINATION lib/${PROJECT_NAME}
 )
 
