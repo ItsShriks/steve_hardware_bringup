@@ -137,7 +137,10 @@ packets — so a PC saw no topics, or small ones (`/odom`) but never `/robot_des
 * **Robot:** `config/fastdds_steve.xml` (exported as `FASTRTPS_DEFAULT_PROFILES_FILE` in `~/.bashrc`
   and `~/ROS_AUTOSTART.sh`): UDP datagrams ≤ 1400 B, shared memory inside the robot.
 * **PC:** `config/fastdds_remote_pc.xml` → copy to `~/.ros/fastdds_steve.xml`: unicast discovery to
-  10.7.4.213 (one locator per robot participant) and the same 1400 B limit.
+  10.7.4.213 (one locator per robot participant) **and to 127.0.0.1** — without it the PC's own
+  nodes (a camera driver on the PC, RViz, the WBC) never discover each other, as multicast is off —
+  the same 1400 B limit, and a 16 MB shared-memory segment for camera images on the PC.
+  Over Ethernet replace `10.7.4.213` by the robot's wired address.
 
 ```bash
 source /opt/ros/humble/setup.bash && source ~/steve_ros2_ws/install/setup.bash

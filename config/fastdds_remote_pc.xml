@@ -2,12 +2,15 @@
 <!-- ROS 2 with Steve over Wi-Fi from this PC (multicast is blocked on the Wi-Fi).
      export ROS_DOMAIN_ID=74 RMW_IMPLEMENTATION=rmw_fastrtps_cpp FASTRTPS_DEFAULT_PROFILES_FILE=~/.ros/fastdds_steve.xml
      Discovery: unicast to the robot (10.7.4.213); one locator per robot participant
-     (port 7400 + 250*74 + 10 + 2*id, id 0..119). UDP datagrams <= 1400 bytes (no IP fragments). -->
+     (port 7400 + 250*74 + 10 + 2*id, id 0..119), and to 127.0.0.1 (this PC's own nodes, id 0..29).
+     UDP datagrams <= 1400 bytes (no IP fragments); 16 MB shared memory for images on this PC. -->
 <profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
   <transport_descriptors>
     <transport_descriptor>
       <transport_id>pc_shm</transport_id>
       <type>SHM</type>
+      <!-- large enough for camera images between nodes on this PC (default segment is smaller) -->
+      <segment_size>16777216</segment_size>
     </transport_descriptor>
     <transport_descriptor>
       <transport_id>pc_udp</transport_id>
@@ -24,6 +27,37 @@
       <useBuiltinTransports>false</useBuiltinTransports>
       <builtin>
         <initialPeersList>
+          <!-- this PC: its own nodes (camera driver, RViz, WBC) must find each other too (no multicast) -->
+          <locator><udpv4><address>127.0.0.1</address><port>25910</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25912</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25914</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25916</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25918</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25920</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25922</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25924</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25926</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25928</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25930</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25932</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25934</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25936</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25938</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25940</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25942</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25944</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25946</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25948</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25950</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25952</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25954</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25956</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25958</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25960</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25962</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25964</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25966</port></udpv4></locator>
+          <locator><udpv4><address>127.0.0.1</address><port>25968</port></udpv4></locator>
           <locator><udpv4><address>10.7.4.213</address><port>25910</port></udpv4></locator>
           <locator><udpv4><address>10.7.4.213</address><port>25912</port></udpv4></locator>
           <locator><udpv4><address>10.7.4.213</address><port>25914</port></udpv4></locator>
