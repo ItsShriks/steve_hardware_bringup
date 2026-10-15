@@ -149,6 +149,25 @@ ros2 daemon stop   # the daemon keeps old settings
 rviz2              # RobotModel: topic /robot_description, Fixed Frame odom
 ```
 
+## Logs (workspace default)
+
+`env-hooks/steve_logging.sh.in` is sourced with `install/setup.bash` and makes, for this workspace:
+
+* every node started by `ros2 launch` print to the screen **and** to log files
+  (`OVERRIDE_LAUNCH_PROCESS_OUTPUT=full`: `launch.log`, `<node>-stdout.log`, `<node>-stderr.log`);
+* every `ros2 launch <pkg> <file>` keep its logs in **`~/ros_logs/<launch file>_<date>_<time>/`** (the
+  nodes' ROS log files + the launch's own folder), `~/ros_logs/latest` → the newest run.
+
+```bash
+ls ~/ros_logs/latest/                              # newest run
+export OVERRIDE_LAUNCH_PROCESS_OUTPUT=screen       # this terminal: screen only
+export ROS_LOG_DIR=~/.ros/log                      # this terminal: ROS's default log location
+```
+
+The second part is a shell function `ros2` (interactive shells that sourced the workspace);
+`timeout ros2 launch ...`, `sudo` or other programs start the `ros2` binary directly and log to
+ROS's default location (`~/.ros/log`) — with the full output (part 1) all the same.
+
 ## Hardware Dependencies
 
 All hardware drivers are now consolidated in **`steve_essentials`**. This package (`steve_hardware_bringup`) orchestrates their launch.

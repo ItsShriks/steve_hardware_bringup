@@ -40,4 +40,7 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+# workspace default: launched nodes log to screen + files (env-hooks/steve_logging.sh.in)
+ament_environment_hooks("${CMAKE_CURRENT_SOURCE_DIR}/env-hooks/steve_logging.sh.in")
+
 ament_package()

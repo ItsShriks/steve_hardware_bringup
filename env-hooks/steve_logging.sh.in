@@ -1,0 +1,26 @@
+# steve_ros2_ws logging defaults (installed by steve_hardware_bringup, sourced with install/setup.bash)
+#
+# 1. every node started by `ros2 launch` writes its output to the screen AND to log files
+#    (launch.log, <node>-stdout.log, <node>-stderr.log). Per terminal off:
+#    export OVERRIDE_LAUNCH_PROCESS_OUTPUT=screen
+if [ -z "$OVERRIDE_LAUNCH_PROCESS_OUTPUT" ]; then
+  export OVERRIDE_LAUNCH_PROCESS_OUTPUT=full
+fi
+
+# 2. `ros2 launch <pkg> <file>` keeps each run's logs in ~/ros_logs/<launch file>_<date>_<time>/
+#    (the nodes' log files + the launch's own folder); ~/ros_logs/latest -> the newest run.
+#    Not if ROS_LOG_DIR is set (then ROS's default behaviour); everything else goes to `ros2`.
+ros2() {
+  if [ "$1" = "launch" ] && [ -z "$ROS_LOG_DIR" ]; then
+    _steve_f="$2"
+    case "$2" in */*|*.py|*.xml|*.yaml) ;; *) _steve_f="$3" ;; esac
+    _steve_n=$(basename -- "${_steve_f:-launch}")
+    _steve_n=${_steve_n%.py}; _steve_n=${_steve_n%.xml}; _steve_n=${_steve_n%.yaml}; _steve_n=${_steve_n%.launch}
+    _steve_d="$HOME/ros_logs/${_steve_n}_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$_steve_d" && ln -sfn "$_steve_d" "$HOME/ros_logs/latest"
+    echo "[steve] logs: $_steve_d"
+    ROS_LOG_DIR="$_steve_d" STEVE_LAUNCH_LOG_DIR="$_steve_d" command ros2 "$@"
+  else
+    command ros2 "$@"
+  fi
+}
