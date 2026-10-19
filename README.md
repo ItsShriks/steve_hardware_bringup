@@ -57,11 +57,20 @@ If you need to stop the automatic session and run drivers manually for debugging
 - `enable_wrist_camera:=true` (default: true) — wrist D405 (`wrist_camera.launch.py`)
 - `enable_joystick:=true` (default: true) — `false` for WBC tests: `neo_teleop2` publishes
   `/cmd_vel` continuously and would override the controller's base commands
-- `ur_autostart:=true` (default: true) — `ur_autostart` node: presses PLAY on the External
-  Control program once the arm is powered on (robot mode RUNNING, safety NORMAL, remote
-  control) and re-activates `scaled_joint_trajectory_controller` after every program start.
-  It never powers the arm on, releases the brakes or moves it.
-- `arm_tool:=robotiq_2f_85` — adds the gripper to the robot description/TF (default `none`).
+- `ur_autostart:=true` (default: true) — `ur_autostart` node keeps the arm ready: powers it on and
+  releases the brakes (`ur_power_on`, default true; the joints click and may move ~1 mm), starts the
+  control script (headless: `resend_robot_program`, else PLAY on External Control) and
+  re-activates `scaled_joint_trajectory_controller` after every script start. Only with safety
+  NORMAL and the pendant in **Remote Control** (once: Settings → System → Remote Control → Enable,
+  then Local → Remote at the top right). A protective stop or EM stop is never cleared
+  automatically: release / clear it at the pendant, the arm then comes back by itself.
+  Never sends a motion.
+- `ur_headless:=true` (default: true) — UR driver in headless mode: it sends the control script
+  itself, no program on the pendant. `false`: the External Control program (URCap).
+- `ur_power_on:=false` — leave power-on and brake release to the pendant.
+- `arm_tool:=camera|robotiq_2f_85|none` — end effector in the robot description/TF: `camera` (default:
+  the D415 on a post under the flange, links `gripper_camera_mount/_post/_body`; its optical frame is the
+  calibrated TF from steve_wbc `gripper_camera.launch.py`), `robotiq_2f_85` (gripper) or `none` (bare flange).
   MoveIt (`steve_manipulation`) and the WBC need it; set it in `ROS_AUTOSTART.sh`.
 
 `steve_manipulation` and `steve_wbc` launch files detect this running bringup (they look for

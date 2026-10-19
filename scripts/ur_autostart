@@ -2,15 +2,17 @@
 """
 ur_autostart — keeps the UR5e ready for ROS commands (started by hardware_bringup.launch.py).
 
-  * presses PLAY on the External Control program (dashboard, port 29999) whenever it is not
-    running, but only if the arm is powered on, brakes released (robot mode RUNNING), safety
-    NORMAL and in remote control. It never powers the arm on or releases the brakes: that
-    stays a deliberate action at the pendant or via /dashboard_client/power_on, brake_release.
+  * power_on (default): powers the arm on and releases the brakes (dashboard, port 29999) when
+    it is off — only with safety NORMAL and the pendant in remote control. A protective stop or
+    an EM stop is never cleared automatically: that stays a deliberate action at the pendant.
+  * starts the control script whenever it is not running (arm powered on, brakes released):
+    headless (default, the driver's headless_mode): /io_and_status_controller/resend_robot_program;
+    else PLAY on the External Control program.
   * activates the trajectory controller (scaled_joint_trajectory_controller) each time the
     program (re)starts — the driver's controller_stopper leaves it inactive otherwise —
     unless another arm command controller (forward_*) is active on purpose.
 
-It never sends a motion command.
+It never sends a motion command (releasing the brakes makes the joints click and may move them ~1 mm).
 
     ros2 run steve_hardware_bringup ur_autostart --ros-args -p robot_ip:=192.168.1.11
 """
@@ -20,6 +22,7 @@ import time
 
 import rclpy
 from controller_manager_msgs.srv import ListControllers, SwitchController
+from std_srvs.srv import Trigger
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool
@@ -38,6 +41,10 @@ class UrAutostart(Node):
         self.auto_play = self.declare_parameter("auto_play", True).value
         self.startup_delay = self.declare_parameter("startup_delay", 5.0).value  # driver ready
         self.play_retry = self.declare_parameter("play_retry", 10.0).value      # [s]
+        self.headless = self.declare_parameter("headless", False).value         # driver's headless_mode
+        self.power_on = self.declare_parameter("power_on", False).value         # power on + brake release
+        self.power_retry = 3.0                                                  # [s] between power steps
+        self.last_power = 0.0
 
         self.program_running = None   # from the driver, None until the driver is up
         self.first_status = None
@@ -54,9 +61,11 @@ class UrAutostart(Node):
         self.list_cli = self.create_client(ListControllers, "/controller_manager/list_controllers")
         self.switch_cli = self.create_client(SwitchController,
                                              "/controller_manager/switch_controller")
+        self.resend_cli = self.create_client(Trigger, "/io_and_status_controller/resend_robot_program")
         self.create_timer(1.0, self._tick)
-        self.get_logger().info(f"UR at {self.robot_ip}: auto play={self.auto_play}, "
-                               f"keeps '{self.controller}' active")
+        self.get_logger().info(f"UR at {self.robot_ip}: auto start={self.auto_play} "
+                               f"({'headless: resend script' if self.headless else 'PLAY External Control'}), "
+                               f"power on + brake release={self.power_on}, keeps '{self.controller}' active")
 
     # ── helpers ──────────────────────────────────────────────────────────────
     def _program_cb(self, msg):
@@ -64,7 +73,7 @@ class UrAutostart(Node):
             self.first_status = time.monotonic()
         if msg.data and not self.program_running:
             self.need_activation = True
-            self.get_logger().info("External Control program running")
+            self.get_logger().info("control script running" if self.headless else "External Control program running")
         self.program_running = msg.data
 
     def _dashboard(self, *cmds):
@@ -98,7 +107,8 @@ class UrAutostart(Node):
             if self.need_activation and self.pending is None:
                 self._check_controllers()
             return
-        if self.auto_play and time.monotonic() - self.last_play > self.play_retry:
+        now = time.monotonic()
+        if self.auto_play and now - self.last_play > self.play_retry and now - self.last_power > self.power_retry:
             self._try_play()
 
     def _try_play(self):
@@ -107,16 +117,33 @@ class UrAutostart(Node):
         if r is None:
             return
         mode, safety, remote, program = r
-        if "RUNNING" not in mode:
-            self._once(f"arm not ready ({mode}): power on + release brakes at the pendant or "
-                       "ros2 service call /dashboard_client/power_on std_srvs/srv/Trigger, "
-                       "then .../brake_release — PLAY follows automatically")
-            return
         if "NORMAL" not in safety:
-            self._once(f"safety status {safety}: clear it at the pendant")
+            self._once(f"safety status {safety}: clear it at the pendant (never cleared automatically)")
             return
         if "true" not in remote.lower():
-            self._once("pendant in LOCAL mode: switch to REMOTE (or press PLAY at the pendant)")
+            self._once("pendant in LOCAL mode: switch it to REMOTE"
+                       + ("" if self.headless else " (or press PLAY at the pendant)"))
+            return
+        if "RUNNING" not in mode:
+            step = ("power on" if "POWER_OFF" in mode else "brake release" if "IDLE" in mode else None)
+            if not self.power_on or step is None:
+                self._once(f"arm not ready ({mode})" + ("" if self.power_on else
+                           ": power on + release brakes at the pendant or ros2 service call "
+                           "/dashboard_client/power_on std_srvs/srv/Trigger, then .../brake_release"
+                           " — the script follows automatically"))
+                return
+            self.last_power = time.monotonic()
+            reply = self._dashboard(step)
+            self.get_logger().info(f"arm {mode.split(':')[-1].strip()} -> {step}: {reply[0] if reply else 'no reply'}")
+            return
+        if self.headless:
+            if not self.resend_cli.service_is_ready():
+                self._once("waiting for /io_and_status_controller/resend_robot_program (UR driver)")
+                return
+            self.last_play = time.monotonic()
+            self.resend_cli.call_async(Trigger.Request()).add_done_callback(
+                lambda f: self.get_logger().info(
+                    "resend control script: " + (f.result().message if f.result() is not None else "no reply")))
             return
         if "external_control" not in program:
             self._once(f"loaded program is not External Control ({program})")

@@ -79,7 +79,8 @@ def execution_stage(
             # the tower is always in the description (an obstacle for TF / RViz / MoveIt / WBC);
             # enable_pan_tilt only switches its motors + camera
             "include_pan_tilt": "true",
-            # robotiq_2f_85 adds the gripper links/TF (no gripper ros2_control here)
+            # camera: the D415 mount under the flange; robotiq_2f_85: the gripper links/TF (no gripper
+            # ros2_control here); none: bare flange
             "arm_tool": LaunchConfiguration("arm_tool").perform(context),
             "gripper_hw": "none",
         },
@@ -139,18 +140,25 @@ def execution_stage(
                 "robot_ip": robot_ip,
                 "tf_prefix": arm_typ,
                 "use_tool_communication": "true",
+                # the driver sends the control script itself: no External Control program on the pendant
+                "headless_mode": LaunchConfiguration("ur_headless").perform(context).lower(),
             }.items(),
         )
         launches.append(ur_arm)
 
-        # PLAY External Control + keep the trajectory controller active (no power-on, no motion)
+        # power on + brake release, (re)start the control script (headless: resend; else PLAY External
+        # Control) and keep the trajectory controller active — never clears a protective / EM stop
         if LaunchConfiguration("ur_autostart").perform(context).lower() == "true":
             launches.append(Node(
                 package="steve_hardware_bringup",
                 executable="ur_autostart",
                 name="ur_autostart",
                 output="screen",
-                parameters=[{"robot_ip": robot_ip.perform(context)}],
+                parameters=[{
+                    "robot_ip": robot_ip.perform(context),
+                    "headless": LaunchConfiguration("ur_headless").perform(context).lower() == "true",
+                    "power_on": LaunchConfiguration("ur_power_on").perform(context).lower() == "true",
+                }],
             ))
 
         # Sole publisher to forward_velocity_controller: zero velocity if the commanding
@@ -310,8 +318,21 @@ def generate_launch_description():
     declare_ur_autostart_cmd = DeclareLaunchArgument(
         "ur_autostart",
         default_value="true",
-        description="PLAY the External Control program when the arm is powered on and keep "
-                    "scaled_joint_trajectory_controller active (never powers on or moves the arm)",
+        description="keep the arm ready: power on + brake release (ur_power_on), start the control script "
+                    "(ur_headless: resend; else PLAY External Control), keep scaled_joint_trajectory_controller "
+                    "active. Never clears a protective / EM stop, never sends a motion",
+    )
+    declare_ur_headless_cmd = DeclareLaunchArgument(
+        "ur_headless",
+        default_value="true",
+        description="UR driver in headless mode: it sends the control script itself, no program on the "
+                    "pendant (needs Remote Control mode); false: the External Control program",
+    )
+    declare_ur_power_on_cmd = DeclareLaunchArgument(
+        "ur_power_on",
+        default_value="true",
+        description="ur_autostart powers the arm on and releases the brakes (the joints click and may move "
+                    "~1 mm) when it is off, safety NORMAL and in Remote Control",
     )
 
     # Opaque function for configuring all hardware
@@ -319,8 +340,9 @@ def generate_launch_description():
 
     declare_arm_tool_cmd = DeclareLaunchArgument(
         "arm_tool",
-        default_value="none",
-        description="End effector in the robot description: none or robotiq_2f_85",
+        default_value="camera",
+        description="End effector in the robot description: camera (D415 on a post under the flange, "
+                    "the current setup), robotiq_2f_85 (gripper) or none (bare flange)",
     )
 
     ld = LaunchDescription()
@@ -333,6 +355,8 @@ def generate_launch_description():
     ld.add_action(declare_wrist_camera_cmd)
     ld.add_action(declare_joystick_cmd)
     ld.add_action(declare_ur_autostart_cmd)
+    ld.add_action(declare_ur_headless_cmd)
+    ld.add_action(declare_ur_power_on_cmd)
     ld.add_action(declare_table_viz_cmd)
     ld.add_action(opq_function)
 
