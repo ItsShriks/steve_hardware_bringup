@@ -14,7 +14,9 @@ from launch.actions import (
     DeclareLaunchArgument,
     IncludeLaunchDescription,
     OpaqueFunction,
+    RegisterEventHandler,
 )
+from launch.event_handlers import OnProcessExit
 from launch.launch_context import LaunchContext
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -144,12 +146,12 @@ def execution_stage(
                 "headless_mode": LaunchConfiguration("ur_headless").perform(context).lower(),
             }.items(),
         )
-        launches.append(ur_arm)
+        arm_stack = [ur_arm]
 
         # power on + brake release, (re)start the control script (headless: resend; else PLAY External
         # Control) and keep the trajectory controller active — never clears a protective / EM stop
         if LaunchConfiguration("ur_autostart").perform(context).lower() == "true":
-            launches.append(Node(
+            arm_stack.append(Node(
                 package="steve_hardware_bringup",
                 executable="ur_autostart",
                 name="ur_autostart",
@@ -160,6 +162,24 @@ def execution_stage(
                     "power_on": LaunchConfiguration("ur_power_on").perform(context).lower() == "true",
                 }],
             ))
+
+        # cold boot: the robot PC is up before the UR controller — a driver started too early hangs
+        # ("Stream is connected but failed to read"), its controllers never come up and the arm stays
+        # stopped until the bringup is restarted. The driver, its controllers and ur_autostart therefore
+        # start only once the UR answers (wait_for_ur); base, LiDARs etc. start right away
+        ur_wait = LaunchConfiguration("ur_wait").perform(context).lower()
+        if ur_wait in ("running", "booted", "true"):
+            wait_ur = Node(
+                package="steve_hardware_bringup",
+                executable="wait_for_ur",
+                name="wait_for_ur",
+                output="screen",
+                arguments=[robot_ip.perform(context)] + (["--running"] if ur_wait == "running" else []),
+            )
+            launches.append(wait_ur)
+            launches.append(RegisterEventHandler(OnProcessExit(target_action=wait_ur, on_exit=arm_stack)))
+        else:
+            launches.extend(arm_stack)
 
         # Sole publisher to forward_velocity_controller: zero velocity if the commanding
         # script stops sending (respawned, so the arm is never left with a stale velocity)
@@ -328,6 +348,13 @@ def generate_launch_description():
         description="UR driver in headless mode: it sends the control script itself, no program on the "
                     "pendant (needs Remote Control mode); false: the External Control program",
     )
+    declare_ur_wait_cmd = DeclareLaunchArgument(
+        "ur_wait",
+        default_value="running",
+        description="when the UR driver (+ its controllers, ur_autostart) starts: running = once the arm is powered on "
+                    "with brakes released (at the pendant) | booted = once the UR controller answers | false = at "
+                    "once. The base, LiDARs etc. always start right away",
+    )
     declare_ur_power_on_cmd = DeclareLaunchArgument(
         "ur_power_on",
         default_value="true",
@@ -355,6 +382,7 @@ def generate_launch_description():
     ld.add_action(declare_wrist_camera_cmd)
     ld.add_action(declare_joystick_cmd)
     ld.add_action(declare_ur_autostart_cmd)
+    ld.add_action(declare_ur_wait_cmd)
     ld.add_action(declare_ur_headless_cmd)
     ld.add_action(declare_ur_power_on_cmd)
     ld.add_action(declare_table_viz_cmd)

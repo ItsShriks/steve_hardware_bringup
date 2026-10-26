@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""
+wait_for_ur — wait until the UR controller has booted, then exit (hardware_bringup.launch.py starts the
+UR driver, its controllers and ur_autostart only after this).
+
+On a cold boot the robot PC is up before the UR controller (PolyScope): a driver started too early hangs in
+"Initializing driver" / "Stream is connected but failed to read from it", its controller manager never
+comes up, and the arm stays stopped until the bringup is restarted (2026-10-26). Ready =
+  * the dashboard server (29999) answers `robotmode` with a booted mode (POWER_OFF, IDLE, RUNNING, ...),
+  * the RTDE (30004) and primary (30001) ports accept connections,
+  * with --running: the robot mode is RUNNING (powered on, brakes released — at the pendant),
+  * and all of it still holds after --settle seconds.
+
+    ros2 run steve_hardware_bringup wait_for_ur 192.168.1.11 [--running] [--settle 5]
+"""
+
+import socket
+import sys
+import time
+
+DASHBOARD_PORT, RTDE_PORT, PRIMARY_PORT = 29999, 30004, 30001
+NOT_BOOTED = ("NO_CONTROLLER", "DISCONNECTED", "BOOTING", "CONFIRM_SAFETY")
+
+
+def robot_mode(ip):
+    """`robotmode` from the dashboard server, or None if it does not answer."""
+    try:
+        with socket.create_connection((ip, DASHBOARD_PORT), timeout=2.0) as s:
+            f = s.makefile("rw", newline="\n")
+            f.readline()  # "Connected: Universal Robots Dashboard Server"
+            f.write("robotmode\n")
+            f.flush()
+            return f.readline().strip() or None
+    except OSError:
+        return None
+
+
+def port_open(ip, port):
+    try:
+        with socket.create_connection((ip, port), timeout=2.0):
+            return True
+    except OSError:
+        return False
+
+
+def ready(ip, running=False):
+    mode = robot_mode(ip)
+    if mode is None:
+        return False, "dashboard not answering (UR controller still booting?)"
+    if any(m in mode for m in NOT_BOOTED) or "Robotmode" not in mode:
+        return False, f"dashboard: {mode}"
+    if running and "RUNNING" not in mode:
+        return False, f"{mode}: waiting for power on + brake release (pendant)"
+    for port in (RTDE_PORT, PRIMARY_PORT):
+        if not port_open(ip, port):
+            return False, f"{mode}, port {port} closed"
+    return True, mode
+
+
+def main():
+    args = sys.argv[1:]
+    if "--ros-args" in args:  # appended when started as a launch_ros Node
+        args = args[:args.index("--ros-args")]
+    settle = 5.0
+    running = "--running" in args
+    if running:
+        args.remove("--running")
+    if "--settle" in args:
+        i = args.index("--settle")
+        settle = float(args[i + 1])
+        del args[i:i + 2]
+    ip = args[0] if args else "192.168.1.11"
+    t0, last, since = time.monotonic(), None, None
+    print(f"[wait_for_ur] waiting for the UR at {ip} ({'brakes released, RUNNING' if running else 'booted'}) before "
+          "starting the arm driver", flush=True)
+    while True:
+        ok, why = ready(ip, running)
+        if ok:
+            since = since or time.monotonic()
+            if time.monotonic() - since >= settle:
+                print(f"[wait_for_ur] UR ready after {time.monotonic() - t0:.0f} s ({why}) -> starting the arm driver",
+                      flush=True)
+                return 0
+        else:
+            since = None
+            if why != last:
+                print(f"[wait_for_ur] not ready ({time.monotonic() - t0:.0f} s): {why}", flush=True)
+                last = why
+        time.sleep(1.0)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
