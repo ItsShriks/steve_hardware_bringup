@@ -4,6 +4,8 @@ UR5e Arm Launch File
 Launches UR5e arm driver with proper configuration
 """
 
+import yaml
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition, UnlessCondition
@@ -110,6 +112,16 @@ def launch_setup(context, *args, **kwargs):
             ur_type.perform(context) + "_update_rate.yaml",
         ]
     )
+
+    # ur_robot_driver >= 2.x: its ur_controllers.yaml uses '$(var update_rate)'; expose the
+    # controller_manager update rate as a launch configuration (as ur_control.launch.py does)
+    try:
+        with open(update_rate_config_file.perform(context)) as f:
+            update_rate = yaml.safe_load(f)["controller_manager"]["ros__parameters"]["update_rate"]
+        context.launch_configurations["update_rate"] = str(update_rate)
+    except (OSError, KeyError, TypeError) as e:
+        print(f"[WARN] ur5e_arm: update_rate not read ({e}); using 500 Hz")
+        context.launch_configurations["update_rate"] = "500"
 
     ur_control_node = Node(
         package="ur_robot_driver",
