@@ -68,9 +68,11 @@ If you need to stop the automatic session and run drivers manually for debugging
 - `ur_headless:=true` (default: true) — UR driver in headless mode: it sends the control script
   itself, no program on the pendant. `false`: the External Control program (URCap).
 - `ur_power_on:=false` — leave power-on and brake release to the pendant.
-- `arm_tool:=camera|robotiq_2f_85|none` — end effector in the robot description/TF: `camera` (default:
-  the D415 on a post under the flange, links `gripper_camera_mount/_post/_body`; its optical frame is the
-  calibrated TF from steve_wbc `gripper_camera.launch.py`), `robotiq_2f_85` (gripper) or `none` (bare flange).
+- `arm_tool:=ability_hand|camera|robotiq_2f_85|none` — end effector in the robot description/TF: `ability_hand`
+  (default since 2026-11-04: the Ability Hand with the D415 on its wrist collar beside the palm,
+  steve_simulation `ability_hand_tool.urdf.xacro`, links `ability_hand_*`), `camera` (the D415 on a post under the
+  flange, links `d415_tool_*`), `robotiq_2f_85` (gripper) or `none` (bare flange). The camera's optical frame is
+  always the calibrated TF from steve_wbc `gripper_camera.launch.py` (`mount:=ability_hand|camera_only`).
   MoveIt (`steve_manipulation`) and the WBC need it; set it in `ROS_AUTOSTART.sh`.
 
 `steve_manipulation` and `steve_wbc` launch files detect this running bringup (they look for

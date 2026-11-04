@@ -81,8 +81,8 @@ def execution_stage(
             # the tower is always in the description (an obstacle for TF / RViz / MoveIt / WBC);
             # enable_pan_tilt only switches its motors + camera
             "include_pan_tilt": "true",
-            # camera: the D415 mount under the flange; robotiq_2f_85: the gripper links/TF (no gripper
-            # ros2_control here); none: bare flange
+            # ability_hand: the Ability Hand + the D415 on its wrist collar beside the palm; camera: the D415
+            # mount under the flange; robotiq_2f_85: the gripper links/TF (no gripper ros2_control here); none: bare flange
             "arm_tool": LaunchConfiguration("arm_tool").perform(context),
             "gripper_hw": "none",
         },
@@ -367,9 +367,10 @@ def generate_launch_description():
 
     declare_arm_tool_cmd = DeclareLaunchArgument(
         "arm_tool",
-        default_value="camera",
-        description="End effector in the robot description: camera (D415 on a post under the flange, "
-                    "the current setup), robotiq_2f_85 (gripper) or none (bare flange)",
+        default_value="ability_hand",
+        description="End effector in the robot description: ability_hand (Ability Hand, D415 on its wrist collar "
+                    "beside the palm, the current setup), camera (D415 on a post under the flange), "
+                    "robotiq_2f_85 (gripper) or none (bare flange)",
     )
 
     ld = LaunchDescription()
