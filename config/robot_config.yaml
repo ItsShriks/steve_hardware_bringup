@@ -21,7 +21,8 @@ devices:
   # order). steve_doctor --udev writes the rules that create these names.
   relayboard: /dev/neo-relayboard
   lidar_1: /dev/neo-s300-1          # front scanner
-  lidar_2: /dev/neo-s300-2          # back scanner
+  # back scanner by serial number: /dev/neo-s300-2 matches any FTDI model 6001, also the Ability Hand's cable
+  lidar_2: /dev/serial/by-id/usb-FTDI_USB-RS422_Cable_FT75P0SM-if00-port0
 
 cameras:
   # RealSense cameras by serial number ("" = the first one found, ambiguous with two cameras).

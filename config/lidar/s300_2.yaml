@@ -1,6 +1,8 @@
 /**:
   ros__parameters:
-    port: /dev/neo-s300-2
+    # by serial number: the udev name neo-s300-2 goes to ANY FTDI model 6001 — also the Ability Hand's TTL-232R, which
+    # took it on 2026-11-05 (the scanner opened the hand's port at 500000 baud: no scans, the hand's link broken)
+    port: /dev/serial/by-id/usb-FTDI_USB-RS422_Cable_FT75P0SM-if00-port0
     baud: 500000
     scan_cycle_time: 0.040
     scan_duration: 0.025
