@@ -6,7 +6,12 @@
     wheel_lever_arm: 0.045
     zero_vel_threshold: 0.001
     request_status_divider: 10
-    heartbeat_divider: 5
+    # PC heartbeat to the drives every heartbeat_divider cycles; the drives' watchdog (armed after homing) trips after
+    # 4 of them and puts the drive into NMT "stopped" (no more PDOs until the bringup re-initialises it). 5 = 200 ms:
+    # any hiccup of this non-RT PC (bringup start, hand driver start, a WBC on the robot) silenced 1-8 drives for good
+    # (2026-11-05, 0.3-1.4 s after homing, 7 times). 20 = heartbeat every 200 ms, drive timeout 800 ms; motion still
+    # stops in software after cmd_timeout / trajectory_timeout when commands stop
+    heartbeat_divider: 20
     small_vel_threshold: 0.02
     steer_hysteresis: 30
     steer_hysteresis_dynamic: 5
