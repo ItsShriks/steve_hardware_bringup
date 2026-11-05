@@ -368,8 +368,8 @@ def generate_launch_description():
     declare_arm_tool_cmd = DeclareLaunchArgument(
         "arm_tool",
         default_value="ability_hand",
-        description="End effector in the robot description: ability_hand (Ability Hand, D415 on its wrist collar "
-                    "beside the palm, the current setup), camera (D415 on a post under the flange), "
+        description="End effector in the robot description: ability_hand (Ability Hand, D435i on the wrist "
+                    "at the palm side, the current setup), camera (D415 on a post under the flange), "
                     "robotiq_2f_85 (gripper) or none (bare flange)",
     )
 
