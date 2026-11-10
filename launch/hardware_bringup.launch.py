@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 import xacro
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -47,6 +47,7 @@ def execution_stage(
 ):
 
     arm_typ = str(arm_type.perform(context))
+    arm_tool = LaunchConfiguration("arm_tool").perform(context)
     
     # Normalize booleans to lowercase string for xacro
     enable_cam = str(enable_camera.perform(context)).lower()
@@ -82,8 +83,9 @@ def execution_stage(
             # enable_pan_tilt only switches its motors + camera
             "include_pan_tilt": "true",
             # ability_hand: the Ability Hand + the D415 on its wrist collar beside the palm; camera: the D415
-            # mount under the flange; robotiq_2f_85: the gripper links/TF (no gripper ros2_control here); none: bare flange
-            "arm_tool": LaunchConfiguration("arm_tool").perform(context),
+            # mount under the flange; robotiq_2f_85: the gripper links/TF (no gripper ros2_control here: the
+            # knuckle angle comes from steve_grasping robotiq_urcap_gripper); none: bare flange
+            "arm_tool": arm_tool,
             "gripper_hw": "none",
         },
     ).toxml()
@@ -141,12 +143,28 @@ def execution_stage(
                 "ur_type": arm_typ,
                 "robot_ip": robot_ip,
                 "tf_prefix": arm_typ,
-                "use_tool_communication": "true",
+                # Robotiq 2F-85: the Robotiq URCap owns the tool connector (24 V, RS-485). With tool communication
+                # the driver's script sets the tool voltage to tool_voltage (0 V) and takes the RS-485 — the
+                # gripper loses power and the URCap's socket answers "?" (2026-11-10)
+                "use_tool_communication": "false" if arm_tool == "robotiq_2f_85" else "true",
                 # the driver sends the control script itself: no External Control program on the pendant
                 "headless_mode": LaunchConfiguration("ur_headless").perform(context).lower(),
             }.items(),
         )
         arm_stack = [ur_arm]
+
+        # Robotiq 2F-85: GripperCommand /gripper_controller/gripper_cmd over the URCap socket (steve_grasping)
+        if arm_tool == "robotiq_2f_85" and LaunchConfiguration("launch_gripper").perform(context).lower() == "true":
+            try:
+                gripper_launch = os.path.join(get_package_share_directory("steve_grasping"), "launch",
+                                              "robotiq_2f85.launch.py")
+                arm_stack.append(IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(gripper_launch),
+                    launch_arguments={"robot_ip": robot_ip.perform(context)}.items(),
+                ))
+            except PackageNotFoundError:
+                print("[hardware_bringup] steve_grasping not installed: no Robotiq gripper bridge "
+                      "(repos.sh sync test)")
 
         # power on + brake release, (re)start the control script (headless: resend; else PLAY External
         # Control) and keep the trajectory controller active — never clears a protective / EM stop
@@ -367,14 +385,22 @@ def generate_launch_description():
 
     declare_arm_tool_cmd = DeclareLaunchArgument(
         "arm_tool",
-        default_value="ability_hand",
-        description="End effector in the robot description: ability_hand (Ability Hand, D435i on the wrist "
-                    "at the palm side, the current setup), camera (D415 on a post under the flange), "
-                    "robotiq_2f_85 (gripper) or none (bare flange)",
+        default_value="robotiq_2f_85",
+        description="End effector in the robot description: robotiq_2f_85 (Robotiq 2F-85 on the tool connector, "
+                    "the current setup since 2026-11-10; starts its GripperCommand bridge and the UR driver "
+                    "without tool communication), ability_hand (Ability Hand, D435i on the wrist at the palm "
+                    "side), camera (D415 on a post under the flange) or none (bare flange)",
+    )
+    declare_launch_gripper_cmd = DeclareLaunchArgument(
+        "launch_gripper",
+        default_value="true",
+        description="arm_tool:=robotiq_2f_85: start steve_grasping robotiq_2f85.launch.py (GripperCommand "
+                    "/gripper_controller/gripper_cmd via the Robotiq URCap)",
     )
 
     ld = LaunchDescription()
     ld.add_action(declare_arm_tool_cmd)
+    ld.add_action(declare_launch_gripper_cmd)
     ld.add_action(declare_namespace_cmd)
     ld.add_action(declare_arm_cmd)
     ld.add_action(declare_robot_ip_cmd)
