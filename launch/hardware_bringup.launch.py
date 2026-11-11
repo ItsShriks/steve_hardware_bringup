@@ -158,10 +158,15 @@ def execution_stage(
             try:
                 gripper_launch = os.path.join(get_package_share_directory("steve_grasping"), "launch",
                                               "robotiq_2f85.launch.py")
-                arm_stack.append(IncludeLaunchDescription(
-                    PythonLaunchDescriptionSource(gripper_launch),
-                    launch_arguments={"robot_ip": robot_ip.perform(context)}.items(),
-                ))
+                if os.path.exists(gripper_launch):
+                    arm_stack.append(IncludeLaunchDescription(
+                        PythonLaunchDescriptionSource(gripper_launch),
+                        launch_arguments={"robot_ip": robot_ip.perform(context)}.items(),
+                    ))
+                else:  # an install from before the 2F-85 (2026-11-11: the whole bringup died on the missing file)
+                    print("\033[31m[hardware_bringup] steve_grasping is installed without robotiq_2f85.launch.py: "
+                          "no Robotiq gripper bridge — rebuild it: colcon build --symlink-install "
+                          "--packages-select steve_grasping\033[0m")
             except PackageNotFoundError:
                 print("[hardware_bringup] steve_grasping not installed: no Robotiq gripper bridge "
                       "(repos.sh sync test)")
