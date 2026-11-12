@@ -54,7 +54,7 @@ If you need to stop the automatic session and run drivers manually for debugging
 - `arm_type:=ur5e` (default: ur5e)
 - `enable_camera:=true` (default: false) — pan-tilt L515
 - `enable_pan_tilt:=true` (default: false) — pan-tilt motors
-- `enable_wrist_camera:=true` (default: true) — wrist D405 (`wrist_camera.launch.py`)
+- `enable_wrist_camera:=true` (default: false) — wrist RealSense on the robot's USB (`wrist_camera.launch.py`); the D435i on the 2F-85 is on the PC's USB instead (steve_wbc `gripper_camera.launch.py`)
 - `enable_joystick:=true` (default: true) — `false` for WBC tests: `neo_teleop2` publishes
   `/cmd_vel` continuously and would override the controller's base commands
 - `ur_autostart:=true` (default: true) — `ur_autostart` node keeps the arm ready: powers it on and

@@ -335,7 +335,7 @@ def generate_launch_description():
 
     declare_wrist_camera_cmd = DeclareLaunchArgument(
         "enable_wrist_camera",
-        default_value="true",
+        default_value="false",  # the wrist D435i is on the PC's USB (steve_wbc gripper_camera.launch.py), 2026-11-12
         description="Enable the wrist RealSense (model + serial from robot_config.yaml) - Options: true/false",
     )
 
