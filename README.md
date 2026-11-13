@@ -211,6 +211,12 @@ For more details on network setup, see the main [workspace README](../../README.
 
 ---
 
+## Contributors & Acknowledgments
+
+This project is developed at the **Humanoid Robots Lab (HRL)**, University of Bonn.
+
+- **Shrikar Nakhye** - [GitHub](https://github.com/Itsshriks) | [Email](mailto:nakhyeshrikar@icloud.com)
+
 ### Acknowledgements
 - **Rohit Menon** - For mentorship and technical guidance on Neobotix platforms.
 - **Prof. Maren Bennewitz** - Head of the Humanoid Robots Lab, University of Bonn.
