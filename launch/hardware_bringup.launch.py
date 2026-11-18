@@ -353,7 +353,7 @@ def generate_launch_description():
 
     declare_table_viz_cmd = DeclareLaunchArgument(
         "table_viz",
-        default_value="lab_table",
+        default_value="3114_table",   # room 3114's T-table since 2026-11-18 (was lab_table)
         description="table model shown in RViz (steve_wbc config/tables/<name>.yaml, reloaded on "
                     "change); '' = off",
     )
