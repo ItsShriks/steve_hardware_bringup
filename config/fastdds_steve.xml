@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fast DDS profile for Steve (robot side), loaded via
+    export FASTRTPS_DEFAULT_PROFILES_FILE=~/steve_ros2_ws/install/steve_hardware_bringup/share/steve_hardware_bringup/config/fastdds_steve.xml
+  in ~/.bashrc and ~/ROS_AUTOSTART.sh.
+
+  Why: the default UDP transport sends a whole message (up to 64 KB) as one datagram. Over the
+  lab Wi-Fi those datagrams are split into IP fragments, which the access points drop, so a PC
+  never received /robot_description (41 KB) or camera images while /odom worked.
+  Here UDP datagrams are capped at 1400 bytes (DDS fragments large messages itself, no IP
+  fragmentation); traffic inside the robot keeps using shared memory (control loops unchanged).
+-->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>steve_shm</transport_id>
+      <type>SHM</type>
+      <!-- large enough for colour / depth images between nodes on the robot -->
+      <segment_size>16777216</segment_size>
+    </transport_descriptor>
+    <transport_descriptor>
+      <transport_id>steve_udp</transport_id>
+      <type>UDPv4</type>
+      <maxMessageSize>1400</maxMessageSize>
+    </transport_descriptor>
+  </transport_descriptors>
+
+  <participant profile_name="steve_default" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>steve_shm</transport_id>
+        <transport_id>steve_udp</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
+</profiles>
