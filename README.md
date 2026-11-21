@@ -159,7 +159,7 @@ packets — so a PC saw no topics, or small ones (`/odom`) but never `/robot_des
 
 ```bash
 source /opt/ros/humble/setup.bash && source ~/steve_ros2_ws/install/setup.bash
-export ROS_DOMAIN_ID=74 RMW_IMPLEMENTATION=rmw_fastrtps_cpp FASTRTPS_DEFAULT_PROFILES_FILE=~/.ros/fastdds_steve.xml
+export ROS_DOMAIN_ID=69 RMW_IMPLEMENTATION=rmw_fastrtps_cpp FASTRTPS_DEFAULT_PROFILES_FILE=~/.ros/fastdds_steve.xml
 ros2 daemon stop   # the daemon keeps old settings
 rviz2              # RobotModel: topic /robot_description, Fixed Frame odom
 ```
