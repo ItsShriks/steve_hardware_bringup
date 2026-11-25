@@ -11,7 +11,7 @@
 network:
   # UR5e controller (pendant: Settings > System > Network). The PC needs an address on the
   # same subnet; steve_doctor checks reachability and the dashboard / RTDE ports.
-  ur_robot_ip: 192.168.1.11       # found by steve_doctor 2026-09-28 (UR5e serial 20205500307, PolyScope 5.16)
+  ur_robot_ip: 192.168.1.102      # UR5e serial 20205500307, PolyScope 5.16 (was .11 until 2026-11-25)
   # This PC's address on the UR subnet for the External Control URCap (pendant: Installation >
   # URCaps > External Control > Host IP). "" = let the driver choose (0.0.0.0).
   ur_reverse_ip: ""
