@@ -64,9 +64,18 @@ def launch_setup(context, *args, **kwargs):
     joint_limit_params = PathJoinSubstitution(
         [FindPackageShare(description_package), "config", ur_type, "joint_limits.yaml"]
     )
-    kinematics_params = PathJoinSubstitution(
-        [FindPackageShare(description_package), "config", ur_type, "default_kinematics.yaml"]
+    # Factory calibration extracted from this arm (ur_calibration), else the generic UR defaults
+    calibration_file = os.path.join(
+        get_package_share_directory("steve_hardware_bringup"), "config",
+        f"{ur_type.perform(context)}_calibration.yaml",
     )
+    if os.path.isfile(calibration_file):
+        kinematics_params = calibration_file
+    else:
+        print(f"[WARN] {calibration_file} not found - using default_kinematics.yaml (TCP may be inaccurate)")
+        kinematics_params = PathJoinSubstitution(
+            [FindPackageShare(description_package), "config", ur_type, "default_kinematics.yaml"]
+        )
     physical_params = PathJoinSubstitution(
         [FindPackageShare(description_package), "config", ur_type, "physical_parameters.yaml"]
     )
@@ -98,6 +107,7 @@ def launch_setup(context, *args, **kwargs):
             "safety_pos_margin:=", safety_pos_margin, " ",
             "safety_k_position:=", safety_k_position, " ",
             "name:=", ur_type, " ",
+            "ur_type:=", ur_type, " ",  # ur_description >= 2.16: required, its default 'ur5x' aborts the driver
             "script_filename:=", script_filename, " ",
             "input_recipe_filename:=", input_recipe_filename, " ",
             "output_recipe_filename:=", output_recipe_filename, " ",

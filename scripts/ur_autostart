@@ -100,6 +100,11 @@ class UrAutostart(Node):
 
     # ── main loop ────────────────────────────────────────────────────────────
     def _tick(self):
+        if self.first_status is None and self.resend_cli.service_is_ready():
+            # ur_robot_driver >= 2.17 publishes robot_program_running only on change: with the arm off
+            # no message ever comes (2026-11-26) — the driver's service being up is the 'driver up' signal
+            self.first_status = time.monotonic()
+            self.program_running = False
         if self.first_status is None or time.monotonic() - self.first_status < self.startup_delay:
             return  # UR driver not up yet (its reverse interface must listen before PLAY)
         if self.program_running:
